@@ -26,7 +26,7 @@ export const generateCaptionFromImage = async (
 
   const genAI = getClient();
   const model = genAI.getGenerativeModel({
-    model: "gemini-1.5-flash",
+    model: "gemini-2.0-flash-exp",
     systemInstruction: `
       You are a social media copywriter for '${brandName}'.
 
