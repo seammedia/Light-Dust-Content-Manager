@@ -591,32 +591,33 @@ export default function App() {
           </div>
 
           {viewMode === 'table' ? (
-            <div className="bg-white rounded-lg shadow-sm border border-stone-300 overflow-hidden">
-              <table className="w-full text-left border-collapse">
+            <>
+              {/* Approve All Button - positioned above Approval Status column */}
+              <div className="mb-2 flex justify-end" style={{ paddingRight: 'calc(16.67% + 24px)' }}>
+                <button
+                  onClick={async () => {
+                    if (confirm(`Approve all ${filteredPosts.length} posts in this month?`)) {
+                      const updates = filteredPosts.map(post =>
+                        supabase.from('posts').update({ status: 'Approved' }).eq('id', post.id)
+                      );
+                      await Promise.all(updates);
+                      fetchPosts();
+                    }
+                  }}
+                  className="bg-brand-green hover:bg-emerald-800 text-white px-4 py-2 rounded-lg font-medium text-sm transition-all shadow-sm"
+                >
+                  Approve All
+                </button>
+              </div>
+
+              <div className="bg-white rounded-lg shadow-sm border border-stone-300 overflow-hidden">
+                <table className="w-full text-left border-collapse">
                 <thead>
                     <tr className="bg-stone-50 border-b border-stone-300">
                         <th className="sticky left-0 z-10 bg-stone-50 p-4 w-32 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Date</th>
                         <th className="p-4 w-64 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Creative</th>
                         <th className="p-4 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Caption & Hashtags</th>
-                        <th className="p-4 w-48 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">
-                          <div className="flex flex-col gap-2">
-                            <span>Approval Status</span>
-                            <button
-                              onClick={async () => {
-                                if (confirm(`Approve all ${filteredPosts.length} posts in this month?`)) {
-                                  const updates = filteredPosts.map(post =>
-                                    supabase.from('posts').update({ status: 'Approved' }).eq('id', post.id)
-                                  );
-                                  await Promise.all(updates);
-                                  fetchPosts();
-                                }
-                              }}
-                              className="bg-brand-green hover:bg-emerald-800 text-white px-3 py-1 rounded text-xs font-bold transition-colors"
-                            >
-                              Approve All
-                            </button>
-                          </div>
-                        </th>
+                        <th className="p-4 w-48 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Approval Status</th>
                         <th className="p-4 w-64 text-xs font-bold text-stone-500 uppercase tracking-wider">Additional Comments</th>
                     </tr>
                 </thead>
@@ -770,7 +771,8 @@ export default function App() {
                     </tr>
                 </tbody>
               </table>
-            </div>
+              </div>
+            </>
           ) : (
             <CalendarView posts={posts} selectedMonth={selectedMonth} />
           )}
