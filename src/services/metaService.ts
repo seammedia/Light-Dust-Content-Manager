@@ -1,5 +1,5 @@
-import { supabase } from '../lib/supabase';
-import type { Post, Client } from '../types';
+import { supabase } from '../../services/supabaseClient';
+import type { Post, Client } from '../../types';
 
 interface MetaPostResponse {
   id: string;
@@ -236,7 +236,7 @@ export class MetaService {
     }
 
     if (post.generatedHashtags && post.generatedHashtags.length > 0) {
-      caption += '\n\n' + post.generatedHashtags.map((tag) => `#${tag}`).join(' ');
+      caption += '\n\n' + post.generatedHashtags.map((tag: string) => `#${tag}`).join(' ');
     }
 
     return caption || post.imageDescription || '';

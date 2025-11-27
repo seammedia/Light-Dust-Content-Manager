@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Client } from '../types';
-import { supabase } from '../services/supabaseClient';
+import { Client } from '../../types';
+import { supabase } from '../../services/supabaseClient';
 import { Check, X, AlertCircle } from 'lucide-react';
 
 interface MetaSettingsProps {
@@ -30,7 +30,7 @@ export function MetaSettings({ client, onUpdate, onClose }: MetaSettingsProps) {
     setSuccess(false);
 
     try {
-      const { data, error: updateError } = await supabase
+      const { error: updateError } = await supabase
         .from('clients')
         .update({
           meta_page_id: formData.meta_page_id || null,

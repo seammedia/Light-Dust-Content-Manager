@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Post, BrandContext, Client } from './types';
 import { PostEditor } from './components/PostEditor';
-import { MetaSettings } from './components/MetaSettings';
+import { MetaSettings } from './src/components/MetaSettings';
 import { supabase } from './services/supabaseClient';
 import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users } from 'lucide-react';
 
@@ -1000,7 +1000,7 @@ export default function App() {
       {showMetaSettings && currentClient && (
         <MetaSettings
           client={currentClient}
-          onUpdate={(updatedClient) => {
+          onUpdate={(updatedClient: Client) => {
             setCurrentClient(updatedClient);
             // Update in allClients array if master account
             if (isMasterAccount) {
