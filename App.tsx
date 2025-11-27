@@ -12,7 +12,7 @@ const INITIAL_BRAND: BrandContext = {
 };
 
 // Calendar View Component
-function CalendarView({ posts, onSelectDate }: { posts: Post[], onSelectDate: (date: string) => void }) {
+function CalendarView({ posts }: { posts: Post[] }) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
   const getDaysInMonth = (date: Date) => {
@@ -629,7 +629,7 @@ export default function App() {
               </table>
             </div>
           ) : (
-            <CalendarView posts={posts} onSelectDate={(date) => console.log(date)} />
+            <CalendarView posts={posts} />
           )}
         </div>
       </main>
