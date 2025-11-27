@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Post, BrandContext } from './types';
 import { PostEditor } from './components/PostEditor';
 import { supabase } from './services/supabaseClient';
-import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings } from 'lucide-react';
+import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar } from 'lucide-react';
 
 const INITIAL_BRAND: BrandContext = {
   name: "Light Dust",
@@ -10,6 +10,97 @@ const INITIAL_BRAND: BrandContext = {
   tone: "Cozy, Smart, Sustainable, Aesthetic, Warm, Inviting",
   keywords: ["Pearl Candle", "Sustainable Home", "DIY Candle", "Eco Friendly", "Home Decor", "Candle Lover"]
 };
+
+// Calendar View Component
+function CalendarView({ posts, onSelectDate }: { posts: Post[], onSelectDate: (date: string) => void }) {
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+
+  const getDaysInMonth = (date: Date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDayOfWeek = firstDay.getDay();
+
+    return { daysInMonth, startingDayOfWeek, year, month };
+  };
+
+  const { daysInMonth, startingDayOfWeek, year, month } = getDaysInMonth(currentMonth);
+
+  const getPostsForDate = (day: number) => {
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    return posts.filter(post => post.date === dateStr);
+  };
+
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const dayNames = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+
+  const previousMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1));
+  };
+
+  const nextMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1));
+  };
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-stone-300 p-6">
+      {/* Calendar Header */}
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-serif font-bold text-brand-dark">
+          {monthNames[month]} {year}
+        </h2>
+        <div className="flex gap-2">
+          <button onClick={previousMonth} className="px-3 py-1 border border-stone-300 rounded hover:bg-stone-50">
+            ←
+          </button>
+          <button onClick={nextMonth} className="px-3 py-1 border border-stone-300 rounded hover:bg-stone-50">
+            →
+          </button>
+        </div>
+      </div>
+
+      {/* Calendar Grid */}
+      <div className="grid grid-cols-7 gap-2">
+        {/* Day Headers */}
+        {dayNames.map(day => (
+          <div key={day} className="text-center text-xs font-bold text-stone-500 uppercase tracking-wider bg-purple-100 py-2 rounded">
+            {day}
+          </div>
+        ))}
+
+        {/* Empty cells for days before month starts */}
+        {Array.from({ length: startingDayOfWeek }).map((_, i) => (
+          <div key={`empty-${i}`} className="border border-stone-200 rounded min-h-[100px] bg-stone-50"></div>
+        ))}
+
+        {/* Calendar Days */}
+        {Array.from({ length: daysInMonth }).map((_, i) => {
+          const day = i + 1;
+          const dayPosts = getPostsForDate(day);
+
+          return (
+            <div key={day} className="border border-stone-200 rounded min-h-[100px] p-2 hover:bg-stone-50 transition-colors">
+              <div className="text-sm font-semibold text-stone-700 mb-1">{day}</div>
+              <div className="space-y-1">
+                {dayPosts.map(post => (
+                  <div
+                    key={post.id}
+                    className="text-xs px-2 py-1 rounded cursor-pointer bg-pink-100 text-pink-800 hover:bg-pink-200 transition-colors truncate"
+                    title={post.title}
+                  >
+                    {post.title || 'Untitled Post'}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 // Map DB columns (snake_case) to App types (camelCase)
 const mapDbToPost = (dbPost: any): Post => ({
@@ -50,6 +141,7 @@ export default function App() {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [storageError, setStorageError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'table' | 'calendar'>('table');
 
   // Debounce timer for database updates
   const debounceTimers = useRef<Record<string, NodeJS.Timeout>>({});
@@ -335,10 +427,38 @@ export default function App() {
         </div>
       )}
 
-      {/* Main Content - Spreadsheet View */}
+      {/* Main Content */}
       <main className="flex-1 overflow-x-auto p-6">
-        <div className="min-w-[1200px] max-w-[1600px] mx-auto bg-white rounded-lg shadow-sm border border-stone-300 overflow-hidden">
-            <table className="w-full text-left border-collapse">
+        <div className="min-w-[1200px] max-w-[1600px] mx-auto">
+          {/* View Toggle Tabs */}
+          <div className="flex gap-2 mb-4">
+            <button
+              onClick={() => setViewMode('table')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+                viewMode === 'table'
+                  ? 'bg-white text-brand-dark border-2 border-brand-dark shadow-sm'
+                  : 'bg-white text-stone-500 border border-stone-300 hover:border-stone-400'
+              }`}
+            >
+              <Table2 className="w-4 h-4" />
+              Table View
+            </button>
+            <button
+              onClick={() => setViewMode('calendar')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+                viewMode === 'calendar'
+                  ? 'bg-white text-brand-dark border-2 border-brand-dark shadow-sm'
+                  : 'bg-white text-stone-500 border border-stone-300 hover:border-stone-400'
+              }`}
+            >
+              <Calendar className="w-4 h-4" />
+              Calendar View
+            </button>
+          </div>
+
+          {viewMode === 'table' ? (
+            <div className="bg-white rounded-lg shadow-sm border border-stone-300 overflow-hidden">
+              <table className="w-full text-left border-collapse">
                 <thead>
                     <tr className="bg-stone-50 border-b border-stone-300">
                         <th className="sticky left-0 z-10 bg-stone-50 p-4 w-32 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Date</th>
@@ -423,13 +543,6 @@ export default function App() {
                                             </div>
                                         )}
                                     </div>
-                                    <input 
-                                        type="text"
-                                        value={post.title}
-                                        onChange={(e) => handleUpdatePost(post.id, 'title', e.target.value)}
-                                        className="w-full text-sm font-medium text-stone-700 bg-transparent border-b border-transparent focus:border-stone-300 focus:outline-none pb-1"
-                                        placeholder="Post Title"
-                                    />
                                 </div>
                             </td>
 
@@ -513,7 +626,11 @@ export default function App() {
                         </td>
                     </tr>
                 </tbody>
-            </table>
+              </table>
+            </div>
+          ) : (
+            <CalendarView posts={posts} onSelectDate={(date) => console.log(date)} />
+          )}
         </div>
       </main>
 
