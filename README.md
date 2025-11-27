@@ -311,13 +311,25 @@ See `DEPLOYMENT.md` for detailed technical documentation of all improvements.
 
 ## Files Reference
 
+### Documentation
 - `README.md` - This file, main documentation
 - `MULTI-CLIENT-SETUP.md` - Detailed multi-client setup guide
 - `CLIENT-PINS.md` - Client access credentials (keep secure!)
 - `DEPLOYMENT.md` - Technical deployment and optimization notes
+- `META-SETUP.md` - **NEW!** Complete Facebook/Instagram API setup guide
+
+### Database Migrations
 - `supabase-multi-client-schema.sql` - Initial database migration
 - `verify-and-fix-clients.sql` - Client verification and setup script
 - `add-abercrombie-ridge.sql` - Example of adding a new client
+- `add-meta-integration-schema.sql` - **NEW!** Meta API integration schema
+
+### Source Code
+- `App.tsx` - Main application with auto-posting logic
+- `types.ts` - TypeScript interfaces including Meta credentials
+- `src/services/metaService.ts` - **NEW!** Meta API service
+- `src/components/MetaSettings.tsx` - **NEW!** Settings UI for Meta integration
+- `api/post-to-meta.ts` - **NEW!** Vercel serverless function for secure posting
 
 ## Security Notes
 
@@ -338,18 +350,40 @@ See `DEPLOYMENT.md` for detailed technical documentation of all improvements.
    - Consider migrating to Supabase Storage for better performance
    - Implement file size limits and validation
 
+## Meta Business Suite Integration (NEW!)
+
+The content manager now supports **automatic posting to Facebook and Instagram** when posts are approved!
+
+### Features:
+- ✅ Auto-post to Facebook Pages when status = "Approved"
+- ✅ Auto-post to Instagram Business Accounts
+- ✅ Schedule Facebook posts for future dates
+- ✅ Per-client Meta credentials and settings
+- ✅ Track posting status (pending, posted, failed)
+- ✅ **100% FREE** - No Buffer/Later fees!
+
+### Setup:
+1. Run `add-meta-integration-schema.sql` in Supabase
+2. Create a Facebook App at https://developers.facebook.com/
+3. Get your Page Access Token and Instagram Account ID
+4. Click Settings (⚙️) in the app and configure credentials
+5. Enable auto-posting and select platforms
+
+See `META-SETUP.md` for complete step-by-step instructions.
+
 ## Future Enhancements
 
 Potential features to add:
 - [ ] Email notifications when posts are approved
-- [ ] Social media API integration (Buffer, Hootsuite)
-- [ ] Automated scheduling when status = "Approved"
+- [x] ~~Social media API integration~~ ✅ **COMPLETED** - Meta Business Suite API
+- [x] ~~Automated scheduling when status = "Approved"~~ ✅ **COMPLETED**
 - [ ] Client-specific branding/themes
 - [ ] Usage analytics per client
 - [ ] Export to PDF/Excel
 - [ ] Comment threads and @mentions
 - [ ] File attachments beyond images
 - [ ] Mobile app
+- [ ] Supabase Storage for images (required for Meta API)
 
 ## License
 

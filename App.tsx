@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Post, BrandContext, Client } from './types';
 import { PostEditor } from './components/PostEditor';
+import { MetaSettings } from './components/MetaSettings';
 import { supabase } from './services/supabaseClient';
 import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users } from 'lucide-react';
 
@@ -235,6 +236,7 @@ export default function App() {
   const [isMasterAccount, setIsMasterAccount] = useState(false);
   const [allClients, setAllClients] = useState<Client[]>([]);
   const [showClientSelector, setShowClientSelector] = useState(false);
+  const [showMetaSettings, setShowMetaSettings] = useState(false);
   const [brandContext, setBrandContext] = useState<BrandContext | null>(null);
 
   const [posts, setPosts] = useState<Post[]>([]);
@@ -373,7 +375,11 @@ export default function App() {
     setShowClientSelector(false);
   };
 
-  const handleUpdatePost = useCallback((id: string, field: keyof Post, value: any) => {
+  const handleUpdatePost = useCallback(async (id: string, field: keyof Post, value: any) => {
+    // Get current post to detect status changes
+    const currentPost = posts.find(p => p.id === id);
+    const isStatusChange = field === 'status' && value === 'Approved' && currentPost?.status !== 'Approved';
+
     // Optimistic Update - immediate UI feedback
     setPosts(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
 
@@ -401,12 +407,93 @@ export default function App() {
         }
         // Revert optimism if needed (could be improved in future)
         fetchPosts();
+      } else if (isStatusChange && currentClient) {
+        // Auto-post to social media when status changes to "Approved"
+        await handleAutoPost(id);
       }
 
       // Clean up timer reference
       delete debounceTimers.current[timerKey];
     }, 500); // 500ms debounce delay
-  }, []);
+  }, [posts, currentClient]);
+
+  const handleAutoPost = async (postId: string) => {
+    if (!currentClient) return;
+
+    const post = posts.find(p => p.id === postId);
+    if (!post) return;
+
+    // Check if auto-posting is enabled for this client
+    if (!currentClient.auto_post_enabled) {
+      console.log('Auto-posting is disabled for this client');
+      return;
+    }
+
+    try {
+      // Build caption
+      let caption = '';
+      if (post.generatedCaption) {
+        caption += post.generatedCaption;
+      }
+      if (post.generatedHashtags && post.generatedHashtags.length > 0) {
+        caption += '\n\n' + post.generatedHashtags.map(tag => `#${tag}`).join(' ');
+      }
+      if (!caption) {
+        caption = post.imageDescription || '';
+      }
+
+      const postPromises = [];
+
+      // Post to Facebook if enabled
+      if (currentClient.auto_post_to_facebook) {
+        postPromises.push(
+          fetch('/api/post-to-meta', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              clientId: currentClient.id,
+              postId: post.id,
+              platform: 'facebook',
+              imageUrl: post.imageUrl,
+              caption: caption,
+              scheduledTime: post.date,
+            }),
+          })
+        );
+      }
+
+      // Post to Instagram if enabled
+      if (currentClient.auto_post_to_instagram && post.imageUrl) {
+        postPromises.push(
+          fetch('/api/post-to-meta', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              clientId: currentClient.id,
+              postId: post.id,
+              platform: 'instagram',
+              imageUrl: post.imageUrl,
+              caption: caption,
+              scheduledTime: post.date,
+            }),
+          })
+        );
+      }
+
+      // Execute all posts
+      const results = await Promise.all(postPromises);
+
+      // Check for errors
+      for (const result of results) {
+        if (!result.ok) {
+          const errorData = await result.json();
+          console.error('Auto-post error:', errorData.error);
+        }
+      }
+    } catch (error) {
+      console.error('Auto-post error:', error);
+    }
+  };
 
   const handleDeletePost = async (id: string) => {
     if (confirm("Are you sure you want to delete this post?")) {
@@ -592,6 +679,13 @@ export default function App() {
                  Switch Client
                </button>
              )}
+             <button
+               onClick={() => setShowMetaSettings(true)}
+               className="flex items-center gap-2 text-sm font-medium text-stone-600 hover:text-brand-green px-3 py-2 border border-stone-300 rounded-lg transition-colors"
+               title="Meta Integration Settings"
+             >
+               <Settings className="w-4 h-4" />
+             </button>
              <button onClick={fetchPosts} className="text-stone-400 hover:text-brand-green p-2" title="Refresh Data">
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
              </button>
@@ -900,6 +994,21 @@ export default function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Meta Integration Settings Modal */}
+      {showMetaSettings && currentClient && (
+        <MetaSettings
+          client={currentClient}
+          onUpdate={(updatedClient) => {
+            setCurrentClient(updatedClient);
+            // Update in allClients array if master account
+            if (isMasterAccount) {
+              setAllClients(allClients.map(c => c.id === updatedClient.id ? updatedClient : c));
+            }
+          }}
+          onClose={() => setShowMetaSettings(false)}
+        />
       )}
     </div>
   );
