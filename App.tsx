@@ -331,7 +331,7 @@ export default function App() {
                     Enter Portal
                 </button>
             </form>
-            <p className="mt-8 text-xs text-stone-400">© 2023 Light Dust Candles</p>
+            <p className="mt-8 text-xs text-stone-400">© 2025 Light Dust Candles</p>
         </div>
       </div>
     );
@@ -473,44 +473,26 @@ export default function App() {
                             {/* Caption Column */}
                             <td className="p-4 align-top border-r border-stone-200">
                                 <div className="h-full flex flex-col gap-3">
-                                    {post.generatedCaption || post.status !== 'Draft' ? (
-                                        <>
-                                            <textarea 
-                                                value={post.generatedCaption || ''}
-                                                onChange={(e) => handleUpdatePost(post.id, 'generatedCaption', e.target.value)}
-                                                className="w-full min-h-[160px] p-3 text-sm leading-relaxed border border-stone-200 rounded bg-white focus:ring-1 focus:ring-brand-green focus:border-brand-green outline-none resize-y"
-                                                placeholder="Caption..."
-                                            />
-                                            <div className="flex flex-wrap gap-2">
-                                                {post.generatedHashtags?.map((tag, idx) => (
-                                                    <span key={idx} className="text-xs text-brand-green bg-brand-green/5 px-1.5 py-0.5 rounded border border-brand-green/10">#{tag}</span>
-                                                ))}
-                                            </div>
-                                            <div className="flex gap-2 mt-auto pt-2">
-                                                <button
-                                                    onClick={() => handleCopy(post)}
-                                                    className="text-xs flex items-center gap-1 text-stone-500 hover:text-brand-dark transition-colors"
-                                                >
-                                                    {copiedId === post.id ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                                                    {copiedId === post.id ? 'Copied' : 'Copy'}
-                                                </button>
-                                            </div>
-                                        </>
-                                    ) : (
-                                        <div className="h-full min-h-[200px] flex flex-col items-center justify-center bg-stone-50 rounded border-2 border-dashed border-stone-200">
-                                            <p className="text-xs text-stone-500 mb-3 text-center px-4">
-                                                {post.imageDescription ? `"${post.imageDescription}"` : "No description provided."}
-                                            </p>
-                                            <button 
-                                                onClick={() => handleGenerateInline(post)}
-                                                disabled={generatingIds.has(post.id)}
-                                                className="bg-brand-green text-white px-4 py-2 rounded text-sm font-medium hover:bg-emerald-800 transition-colors flex items-center gap-2 shadow-sm"
-                                            >
-                                                {generatingIds.has(post.id) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                                                Generate Caption
-                                            </button>
-                                        </div>
-                                    )}
+                                    <textarea
+                                        value={post.generatedCaption || ''}
+                                        onChange={(e) => handleUpdatePost(post.id, 'generatedCaption', e.target.value)}
+                                        className="w-full min-h-[160px] p-3 text-sm leading-relaxed border border-stone-200 rounded bg-white focus:ring-1 focus:ring-brand-green focus:border-brand-green outline-none resize-y"
+                                        placeholder="Caption..."
+                                    />
+                                    <div className="flex flex-wrap gap-2">
+                                        {post.generatedHashtags?.map((tag, idx) => (
+                                            <span key={idx} className="text-xs text-brand-green bg-brand-green/5 px-1.5 py-0.5 rounded border border-brand-green/10">#{tag}</span>
+                                        ))}
+                                    </div>
+                                    <div className="flex gap-2 mt-auto pt-2">
+                                        <button
+                                            onClick={() => handleCopy(post)}
+                                            className="text-xs flex items-center gap-1 text-stone-500 hover:text-brand-dark transition-colors"
+                                        >
+                                            {copiedId === post.id ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                                            {copiedId === post.id ? 'Copied' : 'Copy'}
+                                        </button>
+                                    </div>
                                 </div>
                             </td>
 
