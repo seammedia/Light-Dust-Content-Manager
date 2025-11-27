@@ -161,4 +161,118 @@ Once deployed successfully, you can:
 
 ---
 
+## Recent Updates & Performance Improvements
+
+### 2025-11-27: Fixed Typing Lag & UI Improvements
+
+#### Problem: Typing Lag
+The application was experiencing significant typing lag where keystrokes would be missed or delayed when editing any text field (dates, titles, captions, notes).
+
+**Root Cause:**
+Every single keystroke was immediately triggering:
+1. Optimistic UI update
+2. Database update via Supabase
+3. Network round-trip delay
+4. This caused visible lag and missed keystrokes
+
+**Solution: Debouncing**
+- Implemented debounced database updates with 500ms delay
+- UI updates are still instant (optimistic)
+- Database only updates after user stops typing for 500ms
+- Each field tracks its own debounce timer independently
+
+**Code Changes:**
+```typescript
+// Added to App.tsx
+const debounceTimers = useRef<Record<string, NodeJS.Timeout>>({});
+
+const handleUpdatePost = useCallback((id: string, field: keyof Post, value: any) => {
+  // Immediate UI update - no lag
+  setPosts(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
+
+  // Debounced DB update
+  const timerKey = `${id}-${field}`;
+  if (debounceTimers.current[timerKey]) {
+    clearTimeout(debounceTimers.current[timerKey]);
+  }
+
+  debounceTimers.current[timerKey] = setTimeout(async () => {
+    // DB update happens here after 500ms of no typing
+    const updates = mapPostToDb({ [field]: value });
+    await supabase.from('posts').update(updates).eq('id', id);
+    delete debounceTimers.current[timerKey];
+  }, 500);
+}, []);
+```
+
+#### UI Improvements
+
+**1. Date Format Changed to Australian (DD/MM/YYYY)**
+- Was: `10-25` (MM-DD, cut off)
+- Now: `25/10/2025` (DD/MM/YYYY, full date visible)
+- Date column width increased from `w-24` to `w-32`
+
+**Code Changes:**
+```typescript
+// Display: YYYY-MM-DD → DD/MM/YYYY
+value={post.date ? (() => {
+  const [year, month, day] = post.date.split('-');
+  return `${day}/${month}/${year}`;
+})() : ''}
+
+// Save: DD/MM/YYYY → YYYY-MM-DD (ISO format for DB)
+onChange={(e) => {
+  const parts = e.target.value.split('/');
+  if (parts.length === 3) {
+    handleUpdatePost(post.id, 'date', `${parts[2]}-${parts[1]}-${parts[0]}`);
+  }
+}}
+```
+
+**2. Removed "Regenerate" Button**
+- The "Regenerate" button below captions was removed
+- Only "Copy" button remains
+- Reduces UI clutter and prevents accidental caption regeneration
+
+**3. Simplified Status Dropdown**
+- Removed: "Generated" status option
+- Current options: Draft, For Approval, Approved, Posted
+- Cleaner workflow progression
+
+**Commits:**
+- `92cdcd3` - Fix typing lag and add AU date format
+- `5453b2e` - UI improvements: widen date column and clean up interface
+
+---
+
+## Performance Best Practices
+
+### Database Update Patterns
+
+**❌ Don't Do This:**
+```typescript
+// Updates DB on every keystroke - causes lag!
+onChange={(e) => {
+  updateDatabase(e.target.value); // BAD
+}}
+```
+
+**✅ Do This Instead:**
+```typescript
+// Debounce DB updates, instant UI updates
+onChange={(e) => {
+  setStateImmediately(e.target.value); // Good - instant feedback
+  debouncedDatabaseUpdate(e.target.value); // Good - delayed save
+}}
+```
+
+### Key Learnings
+
+1. **Optimistic UI Updates**: Always update the UI immediately for responsive feel
+2. **Debounce Network Calls**: Delay expensive operations (DB, API) until user stops interacting
+3. **Per-Field Debouncing**: Track separate timers for each field to avoid conflicts
+4. **500ms Sweet Spot**: Long enough to prevent excessive updates, short enough users don't notice
+
+---
+
 **Need help?** Check the main [README.md](./README.md) or create an issue on GitHub.
