@@ -1,5 +1,17 @@
 # Client Access PINs
 
+## ⚠️ IMPORTANT: Database Setup Required
+
+Before these PINs will work, you MUST run the SQL migration in Supabase!
+
+### Steps:
+1. Open **Supabase Dashboard** → **SQL Editor**
+2. Copy and paste `verify-and-fix-clients.sql`
+3. Run the entire script
+4. Verify all 3 clients appear in the output
+
+---
+
 ## Master Account
 **Seam Media**
 - PIN: `1991`
