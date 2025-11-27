@@ -3,7 +3,8 @@ import { Post, BrandContext, Client } from './types';
 import { PostEditor } from './components/PostEditor';
 import { MetaSettings } from './src/components/MetaSettings';
 import { supabase } from './services/supabaseClient';
-import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users } from 'lucide-react';
+import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles } from 'lucide-react';
+import { generateCaptionFromImage } from './services/geminiService';
 
 // Post Detail Modal Component
 function PostDetailModal({ post, onClose }: { post: Post, onClose: () => void }) {
@@ -247,6 +248,7 @@ export default function App() {
   const [storageError, setStorageError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'table' | 'calendar'>('table');
   const [selectedMonth, setSelectedMonth] = useState<Date>(new Date());
+  const [generatingCaptionId, setGeneratingCaptionId] = useState<string | null>(null);
 
   // Debounce timer for database updates
   const debounceTimers = useRef<Record<string, NodeJS.Timeout>>({});
@@ -537,6 +539,31 @@ export default function App() {
     navigator.clipboard.writeText(fullText);
     setCopiedId(post.id);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleGenerateCaption = async (post: Post) => {
+    if (!post.imageUrl || !currentClient) {
+      alert('Please upload an image first');
+      return;
+    }
+
+    setGeneratingCaptionId(post.id);
+
+    try {
+      const result = await generateCaptionFromImage(post.imageUrl, currentClient.brand_name);
+
+      // Update caption
+      await handleUpdatePost(post.id, 'generatedCaption', result.caption);
+
+      // Update hashtags
+      await handleUpdatePost(post.id, 'generatedHashtags', result.hashtags);
+
+    } catch (error) {
+      console.error('Error generating caption:', error);
+      alert('Failed to generate caption. Please try again.');
+    } finally {
+      setGeneratingCaptionId(null);
+    }
   };
 
   const handleNewPost = async (newPost: Post) => {
@@ -878,6 +905,27 @@ export default function App() {
                                         ))}
                                     </div>
                                     <div className="flex gap-2 mt-auto pt-2">
+                                        {/* Generate Caption - Only visible for master account */}
+                                        {isMasterAccount && (
+                                            <button
+                                                onClick={() => handleGenerateCaption(post)}
+                                                disabled={generatingCaptionId === post.id || !post.imageUrl}
+                                                className="text-xs flex items-center gap-1 text-brand-green hover:text-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                title={!post.imageUrl ? 'Upload an image first' : 'Generate caption from image'}
+                                            >
+                                                {generatingCaptionId === post.id ? (
+                                                    <>
+                                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                                        Generating...
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Sparkles className="w-3 h-3" />
+                                                        Generate
+                                                    </>
+                                                )}
+                                            </button>
+                                        )}
                                         <button
                                             onClick={() => handleCopy(post)}
                                             className="text-xs flex items-center gap-1 text-stone-500 hover:text-brand-dark transition-colors"
