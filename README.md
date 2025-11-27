@@ -306,8 +306,33 @@ posts
 4. **Date Improvements** - Changed to Australian format with date picker
 5. **Bulk Actions** - Added "Approve All" button for month-based bulk approval
 6. **UI Cleanup** - Removed regenerate button, simplified status options, removed post title field
+7. **Meta API Integration** - Added Facebook/Instagram auto-posting infrastructure (pending Meta App Review approval)
 
 See `DEPLOYMENT.md` for detailed technical documentation of all improvements.
+
+### Meta Integration Progress (2025-11-27)
+
+**Completed:**
+- ✅ Database schema with Meta credentials storage
+- ✅ Meta API service implementation
+- ✅ Vercel serverless function for secure posting
+- ✅ Auto-posting trigger when status = "Approved"
+- ✅ Settings UI for Meta account connection
+- ✅ Complete setup documentation (META-SETUP.md)
+- ✅ Facebook App created: "Seam Media Content Manager"
+- ✅ Light Dust Candles Page identified (ID: 757104097499888)
+
+**Pending:**
+- ⏳ Meta App Review approval (1-2 weeks) for:
+  - `pages_manage_posts` permission
+  - `instagram_content_publish` permission
+  - `instagram_basic` permission
+- ⏳ Implement Supabase Storage for images (required for Meta API)
+- ⏳ Get Instagram Business Account ID (requires App Review approval)
+
+**Blockers:**
+- Images stored as base64 won't work with Meta API - need public URLs
+- App Review approval required before production posting works
 
 ## Files Reference
 
@@ -370,6 +395,62 @@ The content manager now supports **automatic posting to Facebook and Instagram**
 5. Enable auto-posting and select platforms
 
 See `META-SETUP.md` for complete step-by-step instructions.
+
+### Important: App Review Required
+
+⚠️ **Meta requires App Review approval** before your app can post to Facebook/Instagram in production.
+
+**What You Need:**
+- Your app must request these permissions through Meta's App Review:
+  - `pages_manage_posts` - Required to post to Facebook Pages
+  - `instagram_content_publish` - Required to post to Instagram
+  - `instagram_basic` - Required to access Instagram account info
+
+**App Review Process:**
+1. Go to App Dashboard → "App Review" → "Permissions and Features"
+2. Search for each permission and click "Request Advanced Access"
+3. Fill out the form explaining your use case (content management for clients)
+4. Provide a video demo showing how you'll use the permissions
+5. Submit for review
+
+**Timeline:** Meta's app review typically takes **1-2 weeks**
+
+**During Development:**
+- Your app works in Development Mode with your own Pages/accounts
+- You can test with Pages you admin
+- Limited to 5 test users
+- Full functionality requires approval for production use
+
+### Current Limitations
+
+❗ **Image URLs Required**:
+- Meta API requires images to be publicly accessible via URL
+- Currently, images are stored as base64 in the database (won't work with Meta API)
+- **Solution**: Implement Supabase Storage or use image hosting service (Cloudinary, Imgur, etc.)
+- This is the next priority before Meta integration can work fully
+
+### Quick Start for Testing
+
+**What We Have Working:**
+1. ✅ Database schema created (`add-meta-integration-schema.sql`)
+2. ✅ Settings UI for Meta credentials
+3. ✅ Auto-posting logic in app
+4. ✅ Vercel serverless function for secure API calls
+5. ✅ Tracking system for post status
+
+**To Test Now:**
+1. Run the database migration in Supabase
+2. Get your credentials from Graph API Explorer:
+   - **Facebook Page ID**: Find in Page Settings or use `757104097499888` (Light Dust Candles)
+   - **Page Access Token**: Use Graph API Explorer to generate
+3. Enter in Settings (⚙️) in the app
+4. Enable auto-posting
+5. Test by approving a post (will fail until App Review approved + images hosted)
+
+**Credentials Found:**
+- Light Dust Candles Page ID: `757104097499888`
+- Access Token expires - needs to be refreshed periodically
+- Instagram Account ID: Pending (need App Review approval to access)
 
 ## Future Enhancements
 
