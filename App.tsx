@@ -625,7 +625,7 @@ export default function App() {
                 <Lock className="w-8 h-8" />
             </div>
             <h1 className="font-serif text-3xl text-brand-dark mb-2">Client Access</h1>
-            <p className="text-stone-500 mb-8 font-light">Please enter the password to view the <span className="font-semibold text-brand-green">Light Dust</span> content calendar.</p>
+            <p className="text-stone-500 mb-8 font-light">Please enter the password to view the <span className="font-semibold text-brand-green">Seam Media</span> content manager.</p>
             
             <form onSubmit={handleLogin} className="space-y-4">
                 <div className="relative">
@@ -650,7 +650,7 @@ export default function App() {
                     Enter Portal
                 </button>
             </form>
-            <p className="mt-8 text-xs text-stone-400">© 2025 Light Dust Candles</p>
+            <p className="mt-8 text-xs text-stone-400">© 2025 Seam Media</p>
         </div>
       </div>
     );
