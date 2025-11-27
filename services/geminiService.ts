@@ -3,11 +3,27 @@ import { BrandContext, GenerationResult } from "../types";
 
 const getClient = () => new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || '');
 
+// Helper to detect MIME type from base64 data URL
+const getMimeType = (dataUrl: string): string => {
+  const match = dataUrl.match(/^data:([^;]+);base64,/);
+  if (match) {
+    return match[1];
+  }
+  // Default to jpeg if we can't detect
+  return 'image/jpeg';
+};
+
 // Simple caption generation from image for agency use
 export const generateCaptionFromImage = async (
   imageBase64: string,
   brandName: string
 ): Promise<{ caption: string; hashtags: string[] }> => {
+  // Check if API key is configured
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('Gemini API key not configured. Please add VITE_GEMINI_API_KEY to environment variables.');
+  }
+
   const genAI = getClient();
   const model = genAI.getGenerativeModel({
     model: "gemini-1.5-flash",
@@ -49,6 +65,9 @@ export const generateCaptionFromImage = async (
     Remember: NO em dashes or en dashes. Use commas, periods, or line breaks instead.
   `;
 
+  // Detect MIME type from data URL
+  const mimeType = getMimeType(imageBase64);
+
   // Strip header if present (e.g., "data:image/jpeg;base64,")
   const cleanBase64 = imageBase64.split(',')[1] || imageBase64;
 
@@ -56,7 +75,7 @@ export const generateCaptionFromImage = async (
     {
       inlineData: {
         data: cleanBase64,
-        mimeType: "image/jpeg",
+        mimeType: mimeType,
       },
     },
     { text: prompt }
@@ -80,8 +99,18 @@ export const generateCaptionFromImage = async (
       hashtags: (parsed.hashtags || []).slice(0, 5), // Ensure max 5 hashtags
     };
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Gemini Caption Generation Error:", error);
+    // Provide more specific error messages
+    if (error.message?.includes('API key')) {
+      throw new Error('Invalid Gemini API key. Please check your configuration.');
+    }
+    if (error.message?.includes('quota') || error.message?.includes('rate')) {
+      throw new Error('API rate limit reached. Please try again in a moment.');
+    }
+    if (error.message?.includes('size') || error.message?.includes('large')) {
+      throw new Error('Image is too large. Please use a smaller image.');
+    }
     throw error;
   }
 };

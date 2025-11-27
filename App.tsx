@@ -558,9 +558,10 @@ export default function App() {
       // Update hashtags
       await handleUpdatePost(post.id, 'generatedHashtags', result.hashtags);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error generating caption:', error);
-      alert('Failed to generate caption. Please try again.');
+      const errorMessage = error.message || 'Failed to generate caption. Please try again.';
+      alert(errorMessage);
     } finally {
       setGeneratingCaptionId(null);
     }
