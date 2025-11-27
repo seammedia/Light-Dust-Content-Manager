@@ -11,9 +11,96 @@ const INITIAL_BRAND: BrandContext = {
   keywords: ["Pearl Candle", "Sustainable Home", "DIY Candle", "Eco Friendly", "Home Decor", "Candle Lover"]
 };
 
+// Post Detail Modal Component
+function PostDetailModal({ post, onClose }: { post: Post, onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="p-6">
+          {/* Header */}
+          <div className="flex items-start justify-between mb-6">
+            <div>
+              <h2 className="text-2xl font-serif font-bold text-brand-dark mb-2">{post.title || 'Untitled Post'}</h2>
+              <p className="text-sm text-stone-500">
+                {post.date ? (() => {
+                  const [year, month, day] = post.date.split('-');
+                  return `${day}/${month}/${year}`;
+                })() : 'No date'}
+              </p>
+            </div>
+            <button onClick={onClose} className="text-stone-400 hover:text-stone-600 transition-colors">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Image */}
+          {post.imageUrl && (
+            <div className="mb-6">
+              <img src={post.imageUrl} alt="Post" className="w-full rounded-lg shadow-md" />
+            </div>
+          )}
+
+          {/* Status */}
+          <div className="mb-4">
+            <span className={`inline-block px-3 py-1 rounded text-sm font-bold uppercase ${
+              post.status === 'Posted' ? 'bg-stone-800 text-white' :
+              post.status === 'Approved' ? 'bg-brand-green text-white' :
+              post.status === 'For Approval' ? 'bg-amber-100 text-amber-800' :
+              'bg-stone-100 text-stone-600'
+            }`}>
+              {post.status}
+            </span>
+          </div>
+
+          {/* Caption */}
+          {post.generatedCaption && (
+            <div className="mb-4">
+              <h3 className="text-sm font-bold text-stone-700 mb-2">Caption</h3>
+              <p className="text-sm text-stone-600 leading-relaxed whitespace-pre-wrap">{post.generatedCaption}</p>
+            </div>
+          )}
+
+          {/* Hashtags */}
+          {post.generatedHashtags && post.generatedHashtags.length > 0 && (
+            <div className="mb-4">
+              <h3 className="text-sm font-bold text-stone-700 mb-2">Hashtags</h3>
+              <div className="flex flex-wrap gap-2">
+                {post.generatedHashtags.map((tag, idx) => (
+                  <span key={idx} className="text-xs text-brand-green bg-brand-green/5 px-2 py-1 rounded border border-brand-green/10">
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Notes */}
+          {post.notes && (
+            <div className="mb-4">
+              <h3 className="text-sm font-bold text-stone-700 mb-2">Notes</h3>
+              <p className="text-sm text-stone-600 leading-relaxed whitespace-pre-wrap">{post.notes}</p>
+            </div>
+          )}
+
+          {/* Close Button */}
+          <button
+            onClick={onClose}
+            className="w-full bg-brand-dark text-white py-3 rounded-lg hover:bg-black transition-all font-medium mt-6"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Calendar View Component
 function CalendarView({ posts }: { posts: Post[] }) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
 
   const getDaysInMonth = (date: Date) => {
     const year = date.getFullYear();
@@ -45,60 +132,68 @@ function CalendarView({ posts }: { posts: Post[] }) {
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-stone-300 p-6">
-      {/* Calendar Header */}
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-serif font-bold text-brand-dark">
-          {monthNames[month]} {year}
-        </h2>
-        <div className="flex gap-2">
-          <button onClick={previousMonth} className="px-3 py-1 border border-stone-300 rounded hover:bg-stone-50">
-            ←
-          </button>
-          <button onClick={nextMonth} className="px-3 py-1 border border-stone-300 rounded hover:bg-stone-50">
-            →
-          </button>
+    <>
+      <div className="bg-white rounded-lg shadow-sm border border-stone-300 p-6">
+        {/* Calendar Header */}
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-serif font-bold text-brand-dark">
+            {monthNames[month]} {year}
+          </h2>
+          <div className="flex gap-2">
+            <button onClick={previousMonth} className="px-3 py-1 border border-stone-300 rounded hover:bg-stone-50">
+              ←
+            </button>
+            <button onClick={nextMonth} className="px-3 py-1 border border-stone-300 rounded hover:bg-stone-50">
+              →
+            </button>
+          </div>
+        </div>
+
+        {/* Calendar Grid */}
+        <div className="grid grid-cols-7 gap-2">
+          {/* Day Headers */}
+          {dayNames.map(day => (
+            <div key={day} className="text-center text-xs font-bold text-stone-500 uppercase tracking-wider bg-purple-100 py-2 rounded">
+              {day}
+            </div>
+          ))}
+
+          {/* Empty cells for days before month starts */}
+          {Array.from({ length: startingDayOfWeek }).map((_, i) => (
+            <div key={`empty-${i}`} className="border border-stone-200 rounded min-h-[100px] bg-stone-50"></div>
+          ))}
+
+          {/* Calendar Days */}
+          {Array.from({ length: daysInMonth }).map((_, i) => {
+            const day = i + 1;
+            const dayPosts = getPostsForDate(day);
+
+            return (
+              <div key={day} className="border border-stone-200 rounded min-h-[100px] p-2 hover:bg-stone-50 transition-colors">
+                <div className="text-sm font-semibold text-stone-700 mb-1">{day}</div>
+                <div className="space-y-1">
+                  {dayPosts.map(post => (
+                    <div
+                      key={post.id}
+                      onClick={() => setSelectedPost(post)}
+                      className="text-xs px-2 py-1 rounded cursor-pointer bg-pink-100 text-pink-800 hover:bg-pink-200 transition-colors truncate"
+                      title={post.title}
+                    >
+                      {post.title || 'Untitled Post'}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
-      {/* Calendar Grid */}
-      <div className="grid grid-cols-7 gap-2">
-        {/* Day Headers */}
-        {dayNames.map(day => (
-          <div key={day} className="text-center text-xs font-bold text-stone-500 uppercase tracking-wider bg-purple-100 py-2 rounded">
-            {day}
-          </div>
-        ))}
-
-        {/* Empty cells for days before month starts */}
-        {Array.from({ length: startingDayOfWeek }).map((_, i) => (
-          <div key={`empty-${i}`} className="border border-stone-200 rounded min-h-[100px] bg-stone-50"></div>
-        ))}
-
-        {/* Calendar Days */}
-        {Array.from({ length: daysInMonth }).map((_, i) => {
-          const day = i + 1;
-          const dayPosts = getPostsForDate(day);
-
-          return (
-            <div key={day} className="border border-stone-200 rounded min-h-[100px] p-2 hover:bg-stone-50 transition-colors">
-              <div className="text-sm font-semibold text-stone-700 mb-1">{day}</div>
-              <div className="space-y-1">
-                {dayPosts.map(post => (
-                  <div
-                    key={post.id}
-                    className="text-xs px-2 py-1 rounded cursor-pointer bg-pink-100 text-pink-800 hover:bg-pink-200 transition-colors truncate"
-                    title={post.title}
-                  >
-                    {post.title || 'Untitled Post'}
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
+      {/* Post Detail Modal */}
+      {selectedPost && (
+        <PostDetailModal post={selectedPost} onClose={() => setSelectedPost(null)} />
+      )}
+    </>
   );
 }
 
