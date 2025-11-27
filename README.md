@@ -1,34 +1,46 @@
-# Light Dust Content Manager
+# Seam Media Content Manager
 
-A social content dashboard for Light Dust Candles where clients can view, comment on, and approve social media posts. All data is stored in Supabase with real-time synchronization.
+A multi-client social content management platform where agencies can manage multiple brands, and clients can view, comment on, and approve social media posts. All data is stored in Supabase with real-time synchronization and complete data isolation between clients.
 
 ## Features
 
-- 📅 **Content Calendar** - View and manage upcoming social media posts
-- 🖼️ **Image Upload** - Upload post images directly in the dashboard
-- ✨ **AI Caption Generation** - Generate Instagram captions using Google Gemini AI
-- 💬 **Client Comments** - Add notes and feedback that everyone can see
-- ✅ **Approval Workflow** - Track post status from Draft to Posted
+- 👥 **Multi-Client Support** - Manage unlimited clients with isolated data
+- 🔐 **Master Account** - Agency access to switch between all clients
+- 📅 **Content Calendar** - Table view and visual calendar view
+- 🗓️ **Month Filtering** - Quick navigation between months
+- 🖼️ **Image Upload** - Upload post images with built-in date picker
+- 💬 **Client Comments** - Add notes and feedback
+- ✅ **Approval Workflow** - Track post status (Draft → For Approval → Approved → Posted)
 - 🔄 **Real-time Updates** - Changes sync instantly across all users
-- 🔐 **Password Protection** - Simple client access control
+- 🚀 **Performance Optimized** - Debounced database updates prevent typing lag
+- 📱 **Responsive Design** - Works on all devices
+- 🔐 **PIN-Based Access** - Secure client authentication
 
 ## Setup Instructions
 
-### 1. Supabase Setup
+### 1. Supabase Setup (Multi-Client)
 
 1. Go to [Supabase](https://supabase.com) and create a new project
 2. Once your project is created, go to the **SQL Editor** in the left sidebar
-3. Copy the contents of `supabase-schema.sql` and run it in the SQL Editor
-4. Get your Supabase credentials:
+3. **Run the multi-client migration:**
+   - Copy the contents of `supabase-multi-client-schema.sql`
+   - Paste and run in the SQL Editor
+   - This creates the `clients` table and migrates existing data
+4. **Verify the setup:**
+   - Copy the contents of `verify-and-fix-clients.sql`
+   - Run it to confirm all clients are created
+   - You should see: Seam Media, Light Dust, and Abercrombie Ridge
+5. Get your Supabase credentials:
    - Go to **Project Settings** > **API**
    - Copy your **Project URL** (looks like `https://xxxxx.supabase.co`)
    - Copy your **anon/public** key
 
-### 2. Google Gemini API Setup
+### 2. Google Gemini API Setup (Optional)
 
 1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey)
 2. Create a new API key
 3. Copy the API key for later use
+4. **Note:** AI caption generation has been removed but the setup remains for future use
 
 ### 3. Vercel Deployment
 
@@ -73,23 +85,119 @@ A social content dashboard for Light Dust Candles where clients can view, commen
 
 5. Open [http://localhost:5173](http://localhost:5173) in your browser
 
-## Default Password
+## Access PINs
 
-The default client access password is: **1991**
+See `CLIENT-PINS.md` for all client access credentials.
 
-You can change this in `App.tsx` on line 111.
+### Default PINs:
+- **Master Account (Seam Media)**: `1991` - Access all clients
+- **Light Dust**: `5678` - Light Dust content only
+- **Abercrombie Ridge**: `3847` - Abercrombie Ridge content only
 
 ## Usage
 
-1. **Login** - Enter the password (1991) to access the dashboard
-2. **Add Post** - Click "+ Add Post" to create a new content item
-3. **Upload Image** - Click on any image placeholder to upload
-4. **Generate Caption** - Click "Generate Caption" to use AI for captions and hashtags
-5. **Update Status** - Use the dropdown to change post status (Draft → Generated → For Approval → Approved → Posted)
-6. **Add Comments** - Use the "Additional Comments" field for client feedback
-7. **Export** - Click "Export to CSV" to download all content
+### Master Account (Agency):
+1. **Login** - Enter PIN `1991`
+2. **Select Client** - Choose which client to manage from the selector
+3. **Switch Clients** - Click "Switch Client" in the header anytime
+4. **Manage Content** - Full access to selected client's posts
+
+### Client Account:
+1. **Login** - Enter your unique PIN (e.g., `5678` for Light Dust)
+2. **View Posts** - Automatically shows your content calendar
+3. **Switch Views** - Toggle between Table View and Calendar View
+4. **Filter Months** - Click month tabs to see different months
+5. **Add Post** - Click "+ Add Post" to create new content
+6. **Upload Image** - Click date field to open date picker, upload images
+7. **Update Status** - Use dropdown to change post status
+8. **Add Comments** - Use "Additional Comments" for feedback
+9. **Approve All** - Click "Approve All" button to bulk approve posts in current month
+
+### Key Features:
+- **Date Picker**: Click date field to select dates easily (DD/MM/YYYY format)
+- **Calendar View**: Visual month view shows posts on scheduled dates
+- **Month Filtering**: Quick navigation between past and future months
+- **Bulk Approval**: Approve all posts in a month with one click
+- **Real-time Sync**: Changes appear instantly for all users
+- **Debounced Updates**: Type freely without lag - saves after 500ms pause
+
+## Adding New Clients
+
+To add a new client to the system:
+
+1. Open Supabase Dashboard → SQL Editor
+2. Run this SQL (replace with your client details):
+
+```sql
+INSERT INTO clients (name, pin, brand_name, brand_mission, brand_tone, brand_keywords)
+VALUES (
+  'Client Name',
+  '1234',  -- Unique 4-digit PIN
+  'Brand Name',
+  'Brand mission statement',
+  'Brand tone descriptors',
+  '["keyword1", "keyword2"]'::jsonb
+);
+```
+
+3. The new client will immediately appear in the master account selector
+4. Share the PIN with your client for direct access
+
+See `MULTI-CLIENT-SETUP.md` for detailed instructions.
+
+## Performance Optimizations
+
+### Typing Lag Fix (Completed)
+**Problem:** Every keystroke triggered immediate database updates, causing lag and missed keystrokes.
+
+**Solution:** Implemented debouncing with 500ms delay
+- UI updates instantly (optimistic)
+- Database updates only after typing stops
+- Per-field debounce timers prevent conflicts
+- Result: Zero lag, responsive typing experience
+
+### Date Format (Completed)
+Changed from MM-DD format to Australian DD/MM/YYYY format with native date picker for easier date selection.
+
+### Calendar View (Completed)
+Added visual monthly calendar view with:
+- Posts displayed on scheduled dates
+- Click posts to view full details in modal
+- Month navigation (previous/next)
+- Syncs with month filter tabs
 
 ## Troubleshooting
+
+### Client PIN Not Working
+
+1. Verify client exists in database:
+   ```sql
+   SELECT name, pin FROM clients ORDER BY name;
+   ```
+2. If missing, run `verify-and-fix-clients.sql` in Supabase
+3. Check that PIN matches exactly (case-sensitive)
+
+### Client Not Showing in Master Account
+
+1. Log out and log back in with PIN `1991`
+2. Check database: `SELECT * FROM clients WHERE pin != '1991';`
+3. Verify the client was created successfully
+4. Try running `verify-and-fix-clients.sql`
+
+### Posts Not Showing for Client
+
+1. Check that posts have correct `client_id`:
+   ```sql
+   SELECT p.id, p.title, c.name as client_name
+   FROM posts p
+   JOIN clients c ON p.client_id = c.id;
+   ```
+2. If posts have NULL `client_id`, assign them:
+   ```sql
+   UPDATE posts
+   SET client_id = (SELECT id FROM clients WHERE name = 'Client Name')
+   WHERE client_id IS NULL;
+   ```
 
 ### Environment Variables Not Working in Vercel
 
@@ -104,8 +212,9 @@ After updating environment variables in Vercel, you must **redeploy** your appli
 ### "Database connection failed" Error
 
 1. Check that your Supabase URL and key are correct in Vercel
-2. Verify that you ran the SQL schema in Supabase
-3. Make sure Row Level Security policies are set up (run the `supabase-schema.sql`)
+2. Verify that you ran the multi-client SQL migration in Supabase
+3. Make sure Row Level Security policies are set up
+4. Check that `clients` table exists: `SELECT * FROM clients;`
 
 ### Images Not Loading
 
@@ -113,15 +222,139 @@ After updating environment variables in Vercel, you must **redeploy** your appli
 - Keep images under 2MB to avoid payload errors
 - For production, consider using Supabase Storage instead
 
+### Typing is Laggy
+
+This should be fixed! If you still experience lag:
+1. Check browser console for errors
+2. Verify debouncing is working (should save 500ms after typing stops)
+3. Check network tab - should not see rapid-fire database updates
+
 ## Tech Stack
 
 - **React** + **TypeScript** - Frontend framework
 - **Vite** - Build tool
 - **Tailwind CSS** - Styling
-- **Supabase** - Database and real-time sync
-- **Google Gemini AI** - Caption generation
-- **Vercel** - Deployment
+- **Supabase** - PostgreSQL database with real-time sync
+- **Lucide React** - Icon library
+- **Vercel** - Deployment and hosting
+
+## Architecture
+
+### Multi-Tenancy
+- Data isolation per client using `client_id` foreign key
+- Row Level Security (RLS) enabled on all tables
+- Master account can access all clients
+- Client accounts restricted to own data
+
+### Database Schema
+```
+clients
+├── id (UUID, primary key)
+├── name (text)
+├── pin (text, unique)
+├── brand_name (text)
+├── brand_mission (text)
+├── brand_tone (text)
+├── brand_keywords (jsonb)
+├── created_at (timestamp)
+└── updated_at (timestamp)
+
+posts
+├── id (text, primary key)
+├── client_id (UUID, foreign key → clients.id)
+├── title (text)
+├── date (date)
+├── status (text)
+├── image_description (text)
+├── image_url (text)
+├── generated_caption (text)
+├── generated_hashtags (jsonb)
+└── notes (text)
+```
+
+### Key Improvements Made
+
+**Performance:**
+- Debounced database updates (500ms delay)
+- Optimistic UI updates for instant feedback
+- Per-field debounce timers
+- Efficient query filtering by client_id
+
+**UX Enhancements:**
+- Native date picker for easy date selection
+- Australian date format (DD/MM/YYYY)
+- Calendar view with clickable posts
+- Month filtering tabs
+- Bulk approval button
+- Post detail modal
+- Real-time synchronization
+
+**Multi-Client Features:**
+- PIN-based authentication
+- Client selector for master account
+- Dynamic brand context per client
+- Data isolation and security
+- Easy client onboarding
+
+## Development History
+
+### Recent Updates (2025-11)
+
+1. **Multi-Client System** - Complete rewrite to support multiple clients with isolated data
+2. **Performance Fixes** - Resolved typing lag with debouncing
+3. **Calendar View** - Added visual monthly calendar with post details
+4. **Date Improvements** - Changed to Australian format with date picker
+5. **Bulk Actions** - Added "Approve All" button for month-based bulk approval
+6. **UI Cleanup** - Removed regenerate button, simplified status options, removed post title field
+
+See `DEPLOYMENT.md` for detailed technical documentation of all improvements.
+
+## Files Reference
+
+- `README.md` - This file, main documentation
+- `MULTI-CLIENT-SETUP.md` - Detailed multi-client setup guide
+- `CLIENT-PINS.md` - Client access credentials (keep secure!)
+- `DEPLOYMENT.md` - Technical deployment and optimization notes
+- `supabase-multi-client-schema.sql` - Initial database migration
+- `verify-and-fix-clients.sql` - Client verification and setup script
+- `add-abercrombie-ridge.sql` - Example of adding a new client
+
+## Security Notes
+
+⚠️ **Important Security Considerations:**
+
+1. **PIN Management**
+   - Change default PINs in production
+   - Keep `CLIENT-PINS.md` secure and private
+   - Consider using environment variables for PINs in production
+
+2. **Database Security**
+   - Row Level Security (RLS) is enabled
+   - Use Supabase's built-in authentication for production
+   - Never commit Supabase credentials to git
+
+3. **Image Storage**
+   - Currently using base64 in database (not ideal for production)
+   - Consider migrating to Supabase Storage for better performance
+   - Implement file size limits and validation
+
+## Future Enhancements
+
+Potential features to add:
+- [ ] Email notifications when posts are approved
+- [ ] Social media API integration (Buffer, Hootsuite)
+- [ ] Automated scheduling when status = "Approved"
+- [ ] Client-specific branding/themes
+- [ ] Usage analytics per client
+- [ ] Export to PDF/Excel
+- [ ] Comment threads and @mentions
+- [ ] File attachments beyond images
+- [ ] Mobile app
 
 ## License
 
-© 2023 Light Dust Candles
+© 2025 Seam Media
+
+---
+
+**Questions?** Check the troubleshooting section or create an issue on GitHub.
