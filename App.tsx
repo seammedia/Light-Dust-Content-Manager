@@ -1,15 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Post, BrandContext } from './types';
+import { Post, BrandContext, Client } from './types';
 import { PostEditor } from './components/PostEditor';
 import { supabase } from './services/supabaseClient';
-import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar } from 'lucide-react';
-
-const INITIAL_BRAND: BrandContext = {
-  name: "Light Dust",
-  mission: "Transforming any container into a sustainable candle using innovative pearl wax.",
-  tone: "Cozy, Smart, Sustainable, Aesthetic, Warm, Inviting",
-  keywords: ["Pearl Candle", "Sustainable Home", "DIY Candle", "Eco Friendly", "Home Decor", "Candle Lover"]
-};
+import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users } from 'lucide-react';
 
 // Post Detail Modal Component
 function PostDetailModal({ post, onClose }: { post: Post, onClose: () => void }) {
@@ -205,6 +198,7 @@ function CalendarView({ posts, selectedMonth }: { posts: Post[], selectedMonth: 
 // Map DB columns (snake_case) to App types (camelCase)
 const mapDbToPost = (dbPost: any): Post => ({
   id: dbPost.id,
+  client_id: dbPost.client_id,
   title: dbPost.title,
   date: dbPost.date,
   status: dbPost.status as any,
@@ -218,6 +212,7 @@ const mapDbToPost = (dbPost: any): Post => ({
 // Map App types to DB columns
 const mapPostToDb = (post: Partial<Post>) => {
   const dbObj: any = {};
+  if (post.client_id !== undefined) dbObj.client_id = post.client_id;
   if (post.title !== undefined) dbObj.title = post.title;
   if (post.date !== undefined) dbObj.date = post.date;
   if (post.status !== undefined) dbObj.status = post.status;
@@ -234,6 +229,13 @@ export default function App() {
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState(false);
   const [configError, setConfigError] = useState(false);
+
+  // Multi-client state
+  const [currentClient, setCurrentClient] = useState<Client | null>(null);
+  const [isMasterAccount, setIsMasterAccount] = useState(false);
+  const [allClients, setAllClients] = useState<Client[]>([]);
+  const [showClientSelector, setShowClientSelector] = useState(false);
+  const [brandContext, setBrandContext] = useState<BrandContext | null>(null);
 
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(false);
@@ -258,10 +260,13 @@ export default function App() {
 
   // Fetch posts from Supabase
   const fetchPosts = async () => {
+    if (!currentClient) return;
+
     setLoading(true);
-    const { data, error } = await supabase
+    const { data, error} = await supabase
       .from('posts')
       .select('*')
+      .eq('client_id', currentClient.id)
       .order('date', { ascending: true });
 
     if (error) {
@@ -297,17 +302,75 @@ export default function App() {
         supabase.removeChannel(channel);
       };
     }
-  }, [isAuthenticated, configError]);
+  }, [isAuthenticated, configError, currentClient]);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (passwordInput === '1991') {
-      setIsAuthenticated(true);
-      setLoginError(false);
-    } else {
+
+    try {
+      // Check if PIN matches any client
+      const { data: clients, error } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('pin', passwordInput);
+
+      if (error) {
+        console.error('Error fetching clients:', error);
+        setLoginError(true);
+        setPasswordInput('');
+        return;
+      }
+
+      if (clients && clients.length > 0) {
+        const client = clients[0];
+
+        // Check if this is the master account (Seam Media)
+        if (passwordInput === '1991') {
+          setIsMasterAccount(true);
+          // Fetch all clients for master account
+          const { data: allClientsData } = await supabase
+            .from('clients')
+            .select('*')
+            .order('name');
+
+          if (allClientsData) {
+            setAllClients(allClientsData);
+            setShowClientSelector(true);
+          }
+        } else {
+          // Regular client login
+          setIsMasterAccount(false);
+          setCurrentClient(client);
+          setBrandContext({
+            name: client.brand_name,
+            mission: client.brand_mission || '',
+            tone: client.brand_tone || '',
+            keywords: client.brand_keywords || []
+          });
+        }
+
+        setIsAuthenticated(true);
+        setLoginError(false);
+      } else {
+        setLoginError(true);
+        setPasswordInput('');
+      }
+    } catch (error) {
+      console.error('Login error:', error);
       setLoginError(true);
       setPasswordInput('');
     }
+  };
+
+  const selectClient = (client: Client) => {
+    setCurrentClient(client);
+    setBrandContext({
+      name: client.brand_name,
+      mission: client.brand_mission || '',
+      tone: client.brand_tone || '',
+      keywords: client.brand_keywords || []
+    });
+    setShowClientSelector(false);
   };
 
   const handleUpdatePost = useCallback((id: string, field: keyof Post, value: any) => {
@@ -390,17 +453,22 @@ export default function App() {
   };
 
   const handleNewPost = async (newPost: Post) => {
+    if (!currentClient) return;
+
     // 1. Close modal immediately
     setIsEditorOpen(false);
 
+    // Add client_id to new post
+    const postWithClient = { ...newPost, client_id: currentClient.id };
+
     // 2. Prepare for DB
     const dbPayload = {
-      id: newPost.id, // Using the timestamp ID generated in modal
-      ...mapPostToDb(newPost)
+      id: postWithClient.id, // Using the timestamp ID generated in modal
+      ...mapPostToDb(postWithClient)
     };
 
     // 3. Optimistic Add
-    setPosts([...posts, newPost]);
+    setPosts([...posts, postWithClient]);
 
     // 4. Send to DB
     const { error } = await supabase.from('posts').insert([dbPayload]);
@@ -510,9 +578,20 @@ export default function App() {
             <div className="p-1.5 bg-brand-green rounded text-white">
               <Leaf className="w-5 h-5" />
             </div>
-            <h1 className="font-serif text-xl font-bold tracking-tight text-brand-dark">Light Dust <span className="font-sans font-normal text-stone-400 text-sm">Content Manager</span></h1>
+            <h1 className="font-serif text-xl font-bold tracking-tight text-brand-dark">
+              {currentClient?.name || 'Light Dust'} <span className="font-sans font-normal text-stone-400 text-sm">Content Manager</span>
+            </h1>
           </div>
           <div className="flex items-center gap-3">
+             {isMasterAccount && (
+               <button
+                 onClick={() => setShowClientSelector(true)}
+                 className="flex items-center gap-2 text-sm font-medium text-stone-600 hover:text-brand-green px-3 py-2 border border-stone-300 rounded-lg transition-colors"
+               >
+                 <Users className="w-4 h-4" />
+                 Switch Client
+               </button>
+             )}
              <button onClick={fetchPosts} className="text-stone-400 hover:text-brand-green p-2" title="Refresh Data">
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
              </button>
@@ -779,20 +858,48 @@ export default function App() {
         </div>
       </main>
 
-      {isEditorOpen && (
-        <PostEditor 
+      {isEditorOpen && brandContext && currentClient && (
+        <PostEditor
           post={{
               id: Date.now().toString(),
+              client_id: currentClient.id,
               title: 'New Post',
               date: new Date().toISOString().split('T')[0],
               status: 'Draft',
               imageDescription: '',
               imageUrl: '',
-          }} 
-          brand={INITIAL_BRAND} 
-          onUpdate={(p) => handleNewPost(p)} 
-          onClose={() => setIsEditorOpen(false)} 
+          }}
+          brand={brandContext}
+          onUpdate={(p) => handleNewPost(p)}
+          onClose={() => setIsEditorOpen(false)}
         />
+      )}
+
+      {/* Client Selector Modal for Master Account */}
+      {showClientSelector && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-8">
+            <div className="flex items-center gap-3 mb-6">
+              <Users className="w-8 h-8 text-brand-green" />
+              <h2 className="text-2xl font-serif font-bold text-brand-dark">Select Client</h2>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              {allClients.filter(c => c.pin !== '1991').map(client => (
+                <button
+                  key={client.id}
+                  onClick={() => selectClient(client)}
+                  className="p-6 border-2 border-stone-300 rounded-lg hover:border-brand-green hover:bg-brand-green/5 transition-all text-left group"
+                >
+                  <h3 className="font-bold text-lg text-brand-dark group-hover:text-brand-green transition-colors">
+                    {client.name}
+                  </h3>
+                  <p className="text-sm text-stone-600 mt-2">{client.brand_name}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
