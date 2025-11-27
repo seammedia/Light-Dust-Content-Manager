@@ -598,7 +598,25 @@ export default function App() {
                         <th className="sticky left-0 z-10 bg-stone-50 p-4 w-32 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Date</th>
                         <th className="p-4 w-64 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Creative</th>
                         <th className="p-4 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Caption & Hashtags</th>
-                        <th className="p-4 w-48 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Approval Status</th>
+                        <th className="p-4 w-48 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">
+                          <div className="flex flex-col gap-2">
+                            <span>Approval Status</span>
+                            <button
+                              onClick={async () => {
+                                if (confirm(`Approve all ${filteredPosts.length} posts in this month?`)) {
+                                  const updates = filteredPosts.map(post =>
+                                    supabase.from('posts').update({ status: 'Approved' }).eq('id', post.id)
+                                  );
+                                  await Promise.all(updates);
+                                  fetchPosts();
+                                }
+                              }}
+                              className="bg-brand-green hover:bg-emerald-800 text-white px-3 py-1 rounded text-xs font-bold transition-colors"
+                            >
+                              Approve All
+                            </button>
+                          </div>
+                        </th>
                         <th className="p-4 w-64 text-xs font-bold text-stone-500 uppercase tracking-wider">Additional Comments</th>
                     </tr>
                 </thead>
