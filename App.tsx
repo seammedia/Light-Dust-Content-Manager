@@ -598,7 +598,7 @@ export default function App() {
                         <th className="sticky left-0 z-10 bg-stone-50 p-4 w-32 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Date</th>
                         <th className="p-4 w-64 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Creative</th>
                         <th className="p-4 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Caption & Hashtags</th>
-                        <th className="p-4 w-48 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Approved Status</th>
+                        <th className="p-4 w-48 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Approval Status</th>
                         <th className="p-4 w-64 text-xs font-bold text-stone-500 uppercase tracking-wider">Additional Comments</th>
                     </tr>
                 </thead>
@@ -697,7 +697,7 @@ export default function App() {
                                 </div>
                             </td>
 
-                            {/* Approved Status Column */}
+                            {/* Approval Status Column */}
                             <td className="p-4 align-top border-r border-stone-200">
                                 <div className="space-y-4">
                                     <div className="relative">
