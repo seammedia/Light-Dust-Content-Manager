@@ -98,8 +98,13 @@ function PostDetailModal({ post, onClose }: { post: Post, onClose: () => void })
 }
 
 // Calendar View Component
-function CalendarView({ posts }: { posts: Post[] }) {
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+function CalendarView({ posts, selectedMonth }: { posts: Post[], selectedMonth: Date }) {
+  const [currentMonth, setCurrentMonth] = useState(selectedMonth);
+
+  // Sync with parent selectedMonth
+  useEffect(() => {
+    setCurrentMonth(selectedMonth);
+  }, [selectedMonth]);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
 
   const getDaysInMonth = (date: Date) => {
@@ -237,6 +242,7 @@ export default function App() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [storageError, setStorageError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'table' | 'calendar'>('table');
+  const [selectedMonth, setSelectedMonth] = useState<Date>(new Date());
 
   // Debounce timer for database updates
   const debounceTimers = useRef<Record<string, NodeJS.Timeout>>({});
@@ -419,6 +425,14 @@ export default function App() {
     }
   };
 
+  // Filter posts by selected month
+  const filteredPosts = posts.filter(post => {
+    if (!post.date) return false;
+    const postDate = new Date(post.date);
+    return postDate.getMonth() === selectedMonth.getMonth() &&
+           postDate.getFullYear() === selectedMonth.getFullYear();
+  });
+
   if (configError) {
     return (
       <div className="min-h-screen bg-[#F5F5F0] flex items-center justify-center p-4">
@@ -525,6 +539,31 @@ export default function App() {
       {/* Main Content */}
       <main className="flex-1 overflow-x-auto p-6">
         <div className="min-w-[1200px] max-w-[1600px] mx-auto">
+          {/* Month Filter Tabs */}
+          <div className="flex gap-2 mb-4 overflow-x-auto">
+            {Array.from({ length: 6 }, (_, i) => {
+              const date = new Date();
+              date.setMonth(date.getMonth() - 2 + i);
+              const monthName = date.toLocaleString('default', { month: 'long' });
+              const year = date.getFullYear();
+              const isSelected = selectedMonth.getMonth() === date.getMonth() && selectedMonth.getFullYear() === date.getFullYear();
+
+              return (
+                <button
+                  key={`${year}-${date.getMonth()}`}
+                  onClick={() => setSelectedMonth(new Date(date))}
+                  className={`px-4 py-2 rounded-lg font-medium text-sm transition-all whitespace-nowrap ${
+                    isSelected
+                      ? 'bg-brand-green text-white shadow-sm'
+                      : 'bg-white text-stone-600 border border-stone-300 hover:border-brand-green'
+                  }`}
+                >
+                  {monthName} {year}
+                </button>
+              );
+            })}
+          </div>
+
           {/* View Toggle Tabs */}
           <div className="flex gap-2 mb-4">
             <button
@@ -566,25 +605,16 @@ export default function App() {
                 <tbody className="divide-y divide-stone-200">
                     {loading && posts.length === 0 ? (
                         <tr><td colSpan={5} className="p-8 text-center text-stone-400"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-2"/>Loading content...</td></tr>
-                    ) : posts.map((post) => (
+                    ) : filteredPosts.map((post) => (
                         <tr key={post.id} className="group hover:bg-stone-50/50 transition-colors bg-white">
                             {/* Date Column */}
                             <td className="sticky left-0 z-10 bg-white group-hover:bg-stone-50/50 p-4 align-top border-r border-stone-200">
                                 <div className="flex flex-col gap-2">
                                     <input
-                                        type="text"
-                                        value={post.date ? (() => {
-                                          const [year, month, day] = post.date.split('-');
-                                          return `${day}/${month}/${year}`;
-                                        })() : ''} // Show DD/MM/YYYY
-                                        onChange={(e) => {
-                                          const parts = e.target.value.split('/');
-                                          if (parts.length === 3) {
-                                            handleUpdatePost(post.id, 'date', `${parts[2]}-${parts[1]}-${parts[0]}`);
-                                          }
-                                        }}
-                                        className="w-full bg-transparent font-medium text-stone-600 focus:outline-none focus:text-brand-dark"
-                                        placeholder="DD/MM/YYYY"
+                                        type="date"
+                                        value={post.date || ''}
+                                        onChange={(e) => handleUpdatePost(post.id, 'date', e.target.value)}
+                                        className="w-full bg-transparent font-medium text-stone-600 focus:outline-none focus:text-brand-dark cursor-pointer border border-transparent hover:border-brand-green rounded px-2 py-1 transition-colors"
                                     />
                                     <button
                                         onClick={() => handleDeletePost(post.id)}
@@ -724,7 +754,7 @@ export default function App() {
               </table>
             </div>
           ) : (
-            <CalendarView posts={posts} />
+            <CalendarView posts={posts} selectedMonth={selectedMonth} />
           )}
         </div>
       </main>
