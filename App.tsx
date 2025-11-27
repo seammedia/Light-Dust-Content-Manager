@@ -378,7 +378,7 @@ export default function App() {
             <table className="w-full text-left border-collapse">
                 <thead>
                     <tr className="bg-stone-50 border-b border-stone-300">
-                        <th className="sticky left-0 z-10 bg-stone-50 p-4 w-24 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Date</th>
+                        <th className="sticky left-0 z-10 bg-stone-50 p-4 w-32 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Date</th>
                         <th className="p-4 w-64 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Creative</th>
                         <th className="p-4 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Caption & Hashtags</th>
                         <th className="p-4 w-48 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Approved Status</th>
@@ -487,15 +487,7 @@ export default function App() {
                                                 ))}
                                             </div>
                                             <div className="flex gap-2 mt-auto pt-2">
-                                                <button 
-                                                    onClick={() => handleGenerateInline(post)}
-                                                    disabled={generatingIds.has(post.id)}
-                                                    className="text-xs flex items-center gap-1 text-stone-500 hover:text-brand-green transition-colors"
-                                                >
-                                                    {generatingIds.has(post.id) ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                                                    Regenerate
-                                                </button>
-                                                <button 
+                                                <button
                                                     onClick={() => handleCopy(post)}
                                                     className="text-xs flex items-center gap-1 text-stone-500 hover:text-brand-dark transition-colors"
                                                 >
@@ -532,7 +524,6 @@ export default function App() {
                                             className={`w-full appearance-none pl-3 pr-8 py-2 rounded text-xs font-bold uppercase tracking-wider border focus:outline-none focus:ring-2 focus:ring-offset-1 ${getStatusColor(post.status)} cursor-pointer transition-colors shadow-sm`}
                                         >
                                             <option value="Draft">Draft</option>
-                                            <option value="Generated">Generated</option>
                                             <option value="For Approval">For Approval</option>
                                             <option value="Approved">Approved</option>
                                             <option value="Posted">Posted</option>
