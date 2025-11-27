@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Post, BrandContext } from './types';
 import { PostEditor } from './components/PostEditor';
-import { generatePostContent } from './services/geminiService';
 import { supabase } from './services/supabaseClient';
-import { Plus, Leaf, Loader2, Sparkles, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings } from 'lucide-react';
+import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings } from 'lucide-react';
 
 const INITIAL_BRAND: BrandContext = {
   name: "Light Dust",
@@ -47,8 +46,7 @@ export default function App() {
 
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(false);
-  
-  const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
+
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [storageError, setStorageError] = useState<string | null>(null);
@@ -188,41 +186,6 @@ export default function App() {
           alert("Failed to read image file.");
       };
       reader.readAsDataURL(file);
-    }
-  };
-
-  const handleGenerateInline = async (post: Post) => {
-    setGeneratingIds(prev => new Set(prev).add(post.id));
-    try {
-      const result = await generatePostContent(
-        post.imageDescription,
-        INITIAL_BRAND,
-        post.imageUrl
-      );
-      
-      const updatedData = {
-        generatedCaption: result.caption,
-        generatedHashtags: result.hashtags,
-        status: post.status === 'Draft' ? 'Generated' : post.status
-      };
-
-      // Optimistic Update
-      setPosts(currentPosts => currentPosts.map(p => 
-        p.id === post.id ? { ...p, ...updatedData } as Post : p
-      ));
-
-      // DB Update
-      await supabase.from('posts').update(mapPostToDb(updatedData)).eq('id', post.id);
-
-    } catch (e) {
-      console.error(e);
-      alert("Failed to generate content. Please check your API key in Vercel settings.");
-    } finally {
-      setGeneratingIds(prev => {
-        const next = new Set(prev);
-        next.delete(post.id);
-        return next;
-      });
     }
   };
 
