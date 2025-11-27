@@ -101,17 +101,23 @@ export const generateCaptionFromImage = async (
 
   } catch (error: any) {
     console.error("Gemini Caption Generation Error:", error);
+    console.error("Error details:", JSON.stringify(error, null, 2));
+
+    const errorMsg = error.message?.toLowerCase() || '';
+    const errorStr = JSON.stringify(error).toLowerCase();
+
     // Provide more specific error messages
-    if (error.message?.includes('API key')) {
+    if (errorMsg.includes('api key') || errorMsg.includes('api_key') || errorMsg.includes('invalid key')) {
       throw new Error('Invalid Gemini API key. Please check your configuration.');
     }
-    if (error.message?.includes('quota') || error.message?.includes('rate')) {
+    if (errorMsg.includes('quota exceeded') || errorMsg.includes('resource exhausted') || errorStr.includes('429')) {
       throw new Error('API rate limit reached. Please try again in a moment.');
     }
-    if (error.message?.includes('size') || error.message?.includes('large')) {
+    if (errorMsg.includes('too large') || errorMsg.includes('payload')) {
       throw new Error('Image is too large. Please use a smaller image.');
     }
-    throw error;
+    // Show the actual error message for debugging
+    throw new Error(`Generation failed: ${error.message || 'Unknown error'}`);
   }
 };
 
