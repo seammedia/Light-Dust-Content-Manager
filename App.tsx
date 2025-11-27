@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Post, BrandContext } from './types';
 import { PostEditor } from './components/PostEditor';
 import { generatePostContent } from './services/geminiService';
@@ -52,6 +52,9 @@ export default function App() {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [storageError, setStorageError] = useState<string | null>(null);
+
+  // Debounce timer for database updates
+  const debounceTimers = useRef<Record<string, NodeJS.Timeout>>({});
 
   // Check for config on load
   useEffect(() => {
@@ -116,28 +119,40 @@ export default function App() {
     }
   };
 
-  const handleUpdatePost = async (id: string, field: keyof Post, value: any) => {
-    // Optimistic Update
-    setPosts(posts.map(p => p.id === id ? { ...p, [field]: value } : p));
+  const handleUpdatePost = useCallback((id: string, field: keyof Post, value: any) => {
+    // Optimistic Update - immediate UI feedback
+    setPosts(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
 
-    // Database Update
-    const updates = mapPostToDb({ [field]: value });
-    const { error } = await supabase
-      .from('posts')
-      .update(updates)
-      .eq('id', id);
-
-    if (error) {
-      console.error('Error updating post:', error);
-      if (field === 'imageUrl' && (error.code === '413' || error.message?.includes('payload'))) {
-          alert("The image is too large to save to the database. Please try a smaller file.");
-      } else {
-          setStorageError("Failed to save changes. Please check your connection.");
-      }
-      // Revert optimism if needed (could be improved in future)
-      fetchPosts(); 
+    // Clear any existing debounce timer for this post+field
+    const timerKey = `${id}-${field}`;
+    if (debounceTimers.current[timerKey]) {
+      clearTimeout(debounceTimers.current[timerKey]);
     }
-  };
+
+    // Set new debounce timer - only update DB after user stops typing for 500ms
+    debounceTimers.current[timerKey] = setTimeout(async () => {
+      // Database Update
+      const updates = mapPostToDb({ [field]: value });
+      const { error } = await supabase
+        .from('posts')
+        .update(updates)
+        .eq('id', id);
+
+      if (error) {
+        console.error('Error updating post:', error);
+        if (field === 'imageUrl' && (error.code === '413' || error.message?.includes('payload'))) {
+            alert("The image is too large to save to the database. Please try a smaller file.");
+        } else {
+            setStorageError("Failed to save changes. Please check your connection.");
+        }
+        // Revert optimism if needed (could be improved in future)
+        fetchPosts();
+      }
+
+      // Clean up timer reference
+      delete debounceTimers.current[timerKey];
+    }, 500); // 500ms debounce delay
+  }, []);
 
   const handleDeletePost = async (id: string) => {
     if (confirm("Are you sure you want to delete this post?")) {
@@ -378,14 +393,22 @@ export default function App() {
                             {/* Date Column */}
                             <td className="sticky left-0 z-10 bg-white group-hover:bg-stone-50/50 p-4 align-top border-r border-stone-200">
                                 <div className="flex flex-col gap-2">
-                                    <input 
-                                        type="text" 
-                                        value={post.date ? post.date.substring(5) : ''} // Show MM-DD
-                                        onChange={(e) => handleUpdatePost(post.id, 'date', `2023-${e.target.value}`)}
+                                    <input
+                                        type="text"
+                                        value={post.date ? (() => {
+                                          const [year, month, day] = post.date.split('-');
+                                          return `${day}/${month}/${year}`;
+                                        })() : ''} // Show DD/MM/YYYY
+                                        onChange={(e) => {
+                                          const parts = e.target.value.split('/');
+                                          if (parts.length === 3) {
+                                            handleUpdatePost(post.id, 'date', `${parts[2]}-${parts[1]}-${parts[0]}`);
+                                          }
+                                        }}
                                         className="w-full bg-transparent font-medium text-stone-600 focus:outline-none focus:text-brand-dark"
-                                        placeholder="MM-DD"
+                                        placeholder="DD/MM/YYYY"
                                     />
-                                    <button 
+                                    <button
                                         onClick={() => handleDeletePost(post.id)}
                                         className="text-stone-300 hover:text-red-500 transition-colors p-1"
                                         title="Delete Post"
