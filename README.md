@@ -15,6 +15,9 @@ A multi-client social content management platform where agencies can manage mult
 - 🚀 **Performance Optimized** - Debounced database updates prevent typing lag
 - 📱 **Responsive Design** - Works on all devices
 - 🔐 **PIN-Based Access** - Secure client authentication
+- ✨ **AI Caption Generation** - Generate captions and hashtags from images using Gemini AI (master account only)
+- 📧 **Gmail Integration** - Send review notification emails directly from the dashboard
+- 🏷️ **Editable Hashtags** - Click to edit hashtags inline
 
 ## Setup Instructions
 
@@ -35,14 +38,40 @@ A multi-client social content management platform where agencies can manage mult
    - Copy your **Project URL** (looks like `https://xxxxx.supabase.co`)
    - Copy your **anon/public** key
 
-### 2. Google Gemini API Setup (Optional)
+### 2. Google Gemini API Setup (For AI Caption Generation)
 
 1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey)
 2. Create a new API key
-3. Copy the API key for later use
-4. **Note:** AI caption generation has been removed but the setup remains for future use
+3. Add to Vercel as `VITE_GEMINI_API_KEY`
+4. **Usage:** Master account can click "Generate" button on any post to auto-generate caption and hashtags from the uploaded image
+5. **Model:** Uses `gemini-2.0-flash-exp` for fast image analysis
+6. **Style:** Generates warm, friendly captions with paragraphs (no em dashes) and 4-5 relevant hashtags
 
-### 3. Vercel Deployment
+### 3. Gmail API Setup (For Email Notifications)
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create or select a project
+3. Enable the **Gmail API** (APIs & Services → Library → Search "Gmail API")
+4. Go to **Credentials** → **Create Credentials** → **OAuth 2.0 Client ID**
+5. Application type: **Web application**
+6. Add **Authorized redirect URI**: `https://your-vercel-domain.vercel.app/oauth/callback`
+7. Copy the **Client ID** (looks like `xxxxx.apps.googleusercontent.com`)
+8. Add to Vercel as `VITE_GOOGLE_CLIENT_ID`
+9. **Usage:** Click "Connect Gmail" button (bottom-right) when logged in as master account
+
+**Email Features:**
+- Send review notification emails directly from dashboard
+- Emails sent from connected Gmail account (e.g., `sales@seammedia.com.au`)
+- Auto-CC to `contact@seammedia.com.au` on all emails
+- Client email addresses saved to database for future use
+- Pre-fills client contact name in greeting
+
+**Token Expiry:**
+- Gmail tokens expire after ~1 hour (Google security requirement)
+- Staff need to click "Connect Gmail" to re-authenticate when expired
+- Recommended: Use a shared Gmail account (e.g., `sales@seammedia.com.au`) that staff can authenticate with
+
+### 4. Vercel Deployment
 
 1. Push your code to GitHub
 2. Go to [Vercel](https://vercel.com) and import your repository
@@ -52,13 +81,14 @@ A multi-client social content management platform where agencies can manage mult
    VITE_SUPABASE_URL=https://your-project.supabase.co
    VITE_SUPABASE_ANON_KEY=your_supabase_anon_key_here
    VITE_GEMINI_API_KEY=your_gemini_api_key_here
+   VITE_GOOGLE_CLIENT_ID=your_google_oauth_client_id_here
    ```
 
    ⚠️ **Important**: All variables MUST start with `VITE_` or they won't work!
 
 4. Deploy your application
 
-### 4. Local Development
+### 5. Local Development
 
 1. Clone the repository:
    ```bash
@@ -76,6 +106,7 @@ A multi-client social content management platform where agencies can manage mult
    VITE_SUPABASE_URL=https://your-project.supabase.co
    VITE_SUPABASE_ANON_KEY=your_supabase_anon_key_here
    VITE_GEMINI_API_KEY=your_gemini_api_key_here
+   VITE_GOOGLE_CLIENT_ID=your_google_oauth_client_id_here
    ```
 
 4. Run the development server:
@@ -101,6 +132,10 @@ See `CLIENT-PINS.md` for all client access credentials.
 2. **Select Client** - Choose which client to manage from the selector
 3. **Switch Clients** - Click "Switch Client" in the header anytime
 4. **Manage Content** - Full access to selected client's posts
+5. **Generate Caption** - Click "Generate" button on any post to auto-generate caption and hashtags from uploaded image
+6. **Update from Feedback** - Click "Update from Feedback" button to have AI update caption/hashtags based on client notes
+7. **Email Client** - Click "Email Client" button to send review notification email directly from dashboard
+8. **Connect Gmail** - Click floating button (bottom-right) to connect Gmail for sending emails
 
 ### Client Account:
 1. **Login** - Enter your unique PIN (e.g., `5678` for Light Dust)
@@ -144,6 +179,26 @@ VALUES (
 4. Share the PIN with your client for direct access
 
 See `MULTI-CLIENT-SETUP.md` for detailed instructions.
+
+### Setting Up Client Contact Info (For Emails)
+
+To enable auto-fill of client email addresses and personalized greetings:
+
+```sql
+-- Add contact columns if not already present
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS contact_name TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS contact_email TEXT;
+
+-- Set contact info for each client
+UPDATE clients
+SET contact_name = 'John',
+    contact_email = 'john@example.com'
+WHERE name = 'Client Name';
+```
+
+This enables:
+- Auto-fill of "To:" field with client's email when clicking "Email Client"
+- Personalized greeting: "Hi John," instead of "Hi Client Name,"
 
 ## Performance Optimizations
 
@@ -298,15 +353,21 @@ posts
 
 ## Development History
 
-### Recent Updates (2025-11)
+### Recent Updates (2025-11-28)
 
 1. **Multi-Client System** - Complete rewrite to support multiple clients with isolated data
-2. **Performance Fixes** - Resolved typing lag with debouncing
+2. **Performance Fixes** - Resolved typing lag with debounced textarea components
 3. **Calendar View** - Added visual monthly calendar with post details
 4. **Date Improvements** - Changed to Australian format with date picker
 5. **Bulk Actions** - Added "Approve All" button for month-based bulk approval
 6. **UI Cleanup** - Removed regenerate button, simplified status options, removed post title field
 7. **Meta API Integration** - Added Facebook/Instagram auto-posting infrastructure (pending Meta App Review approval)
+8. **AI Caption Generation** - Generate captions and hashtags from images using Gemini 2.0 Flash (master account only)
+9. **Update from Feedback** - AI reads client notes and updates caption/hashtags accordingly
+10. **Gmail Integration** - Send review notification emails directly from dashboard via Gmail API
+11. **Editable Hashtags** - Hashtags now displayed in editable text field for easy modification
+12. **Client Contact Info** - Store contact name/email for auto-fill in email modal
+13. **Rebranding** - Updated login page to "Seam Media content manager"
 
 See `DEPLOYMENT.md` for detailed technical documentation of all improvements.
 
@@ -351,10 +412,13 @@ See `DEPLOYMENT.md` for detailed technical documentation of all improvements.
 
 ### Source Code
 - `App.tsx` - Main application with auto-posting logic
-- `types.ts` - TypeScript interfaces including Meta credentials
-- `src/services/metaService.ts` - **NEW!** Meta API service
-- `src/components/MetaSettings.tsx` - **NEW!** Settings UI for Meta integration
-- `api/post-to-meta.ts` - **NEW!** Vercel serverless function for secure posting
+- `types.ts` - TypeScript interfaces including Meta credentials, Gmail settings
+- `services/geminiService.ts` - AI caption generation and feedback processing
+- `services/gmailService.ts` - Gmail OAuth and email sending
+- `src/services/metaService.ts` - Meta API service
+- `src/components/MetaSettings.tsx` - Settings UI for Meta integration
+- `api/post-to-meta.ts` - Vercel serverless function for secure posting
+- `public/oauth/callback/index.html` - Gmail OAuth callback handler
 
 ## Security Notes
 
@@ -455,9 +519,11 @@ See `META-SETUP.md` for complete step-by-step instructions.
 ## Future Enhancements
 
 Potential features to add:
-- [ ] Email notifications when posts are approved
+- [x] ~~Email notifications when posts are approved~~ ✅ **COMPLETED** - Gmail API integration
 - [x] ~~Social media API integration~~ ✅ **COMPLETED** - Meta Business Suite API
 - [x] ~~Automated scheduling when status = "Approved"~~ ✅ **COMPLETED**
+- [x] ~~AI Caption Generation~~ ✅ **COMPLETED** - Gemini 2.0 Flash
+- [ ] Refresh token for Gmail (avoid re-auth every hour)
 - [ ] Client-specific branding/themes
 - [ ] Usage analytics per client
 - [ ] Export to PDF/Excel
