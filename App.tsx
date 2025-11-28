@@ -651,8 +651,9 @@ export default function App() {
     setSendingEmail(true);
 
     const dashboardUrl = window.location.origin;
+    const contactName = currentClient.contact_name || currentClient.name;
     const subject = 'Your Social Calendar is Ready for Review';
-    const body = `Hi ${currentClient.name},
+    const body = `Hi ${contactName},
 
 Your social calendar is ready for review.
 
@@ -1387,7 +1388,7 @@ Heath`
               <div>
                 <label className="block text-sm font-medium text-stone-700 mb-1">Message Preview:</label>
                 <div className="text-sm text-stone-600 bg-stone-50 px-3 py-2 rounded-lg whitespace-pre-wrap max-h-40 overflow-y-auto">
-{`Hi ${currentClient.name},
+{`Hi ${currentClient.contact_name || currentClient.name},
 
 Your social calendar is ready for review.
 
@@ -1400,6 +1401,13 @@ Thanks,
 Heath`}
                 </div>
               </div>
+
+              {/* Edit client contact info */}
+              {!currentClient.contact_email && (
+                <p className="text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-lg">
+                  Tip: Set up contact details for this client in Supabase to auto-fill the email address next time.
+                </p>
+              )}
             </div>
 
             <div className="flex gap-3 mt-6">
