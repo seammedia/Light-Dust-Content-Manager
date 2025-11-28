@@ -1379,6 +1379,13 @@ Heath`
               </div>
 
               <div>
+                <label className="block text-sm font-medium text-stone-700 mb-1">CC:</label>
+                <p className="text-sm text-stone-500 bg-stone-50 px-3 py-2 rounded-lg">
+                  contact@seammedia.com.au
+                </p>
+              </div>
+
+              <div>
                 <label className="block text-sm font-medium text-stone-700 mb-1">Subject:</label>
                 <p className="text-sm text-stone-600 bg-stone-50 px-3 py-2 rounded-lg">
                   Your Social Calendar is Ready for Review
