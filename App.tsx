@@ -3,7 +3,7 @@ import { Post, BrandContext, Client } from './types';
 import { PostEditor } from './components/PostEditor';
 import { MetaSettings } from './src/components/MetaSettings';
 import { supabase } from './services/supabaseClient';
-import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles } from 'lucide-react';
+import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles, Mail } from 'lucide-react';
 import { generateCaptionFromImage, updateFromFeedback } from './services/geminiService';
 
 // Debounced Textarea Component - prevents typing lag
@@ -943,8 +943,36 @@ export default function App() {
 
           {viewMode === 'table' ? (
             <>
-              {/* Approve All Button - positioned above Approval Status column */}
-              <div className="mb-2 flex justify-end" style={{ paddingRight: 'calc(16.67% + 24px)' }}>
+              {/* Action Buttons - positioned above Approval Status column */}
+              <div className="mb-2 flex justify-end gap-2" style={{ paddingRight: 'calc(16.67% + 24px)' }}>
+                {/* Email Client Button - Master account only */}
+                {isMasterAccount && currentClient && (
+                  <button
+                    onClick={() => {
+                      const dashboardUrl = window.location.origin;
+                      const clientName = currentClient.name;
+                      const subject = encodeURIComponent(`Your Social Calendar is Ready for Review`);
+                      const body = encodeURIComponent(
+`Hi ${clientName},
+
+Your social calendar is ready for review.
+
+Please visit the link below to view and approve your upcoming posts:
+${dashboardUrl}
+
+If you have any feedback or changes, please add them in the comments section for each post.
+
+Thanks,
+Heath`
+                      );
+                      window.open(`mailto:?subject=${subject}&body=${body}`, '_blank');
+                    }}
+                    className="bg-stone-100 hover:bg-stone-200 text-stone-700 px-4 py-2 rounded-lg font-medium text-sm transition-all shadow-sm border border-stone-300 flex items-center gap-2"
+                  >
+                    <Mail className="w-4 h-4" />
+                    Email Client
+                  </button>
+                )}
                 <button
                   onClick={async () => {
                     if (confirm(`Approve all ${filteredPosts.length} posts in this month?`)) {
