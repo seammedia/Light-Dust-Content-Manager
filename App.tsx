@@ -4,7 +4,7 @@ import { PostEditor } from './components/PostEditor';
 import { MetaSettings } from './src/components/MetaSettings';
 import { supabase } from './services/supabaseClient';
 import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles } from 'lucide-react';
-import { generateCaptionFromImage } from './services/geminiService';
+import { generateCaptionFromImage, updateFromFeedback } from './services/geminiService';
 
 // Post Detail Modal Component
 function PostDetailModal({ post, onClose }: { post: Post, onClose: () => void }) {
@@ -249,6 +249,7 @@ export default function App() {
   const [viewMode, setViewMode] = useState<'table' | 'calendar'>('table');
   const [selectedMonth, setSelectedMonth] = useState<Date>(new Date());
   const [generatingCaptionId, setGeneratingCaptionId] = useState<string | null>(null);
+  const [updatingFromFeedbackId, setUpdatingFromFeedbackId] = useState<string | null>(null);
 
   // Debounce timer for database updates
   const debounceTimers = useRef<Record<string, NodeJS.Timeout>>({});
@@ -564,6 +565,42 @@ export default function App() {
       alert(errorMessage);
     } finally {
       setGeneratingCaptionId(null);
+    }
+  };
+
+  const handleUpdateFromFeedback = async (post: Post) => {
+    if (!post.notes || !currentClient) {
+      alert('No feedback to process. Please add client notes first.');
+      return;
+    }
+
+    if (!post.generatedCaption && (!post.generatedHashtags || post.generatedHashtags.length === 0)) {
+      alert('No caption or hashtags to update. Please generate content first.');
+      return;
+    }
+
+    setUpdatingFromFeedbackId(post.id);
+
+    try {
+      const result = await updateFromFeedback(
+        post.generatedCaption || '',
+        post.generatedHashtags || [],
+        post.notes,
+        currentClient.brand_name
+      );
+
+      // Update caption
+      await handleUpdatePost(post.id, 'generatedCaption', result.caption);
+
+      // Update hashtags
+      await handleUpdatePost(post.id, 'generatedHashtags', result.hashtags);
+
+    } catch (error: any) {
+      console.error('Error updating from feedback:', error);
+      const errorMessage = error.message || 'Failed to update. Please try again.';
+      alert(errorMessage);
+    } finally {
+      setUpdatingFromFeedbackId(null);
     }
   };
 
@@ -900,10 +937,22 @@ export default function App() {
                                         className="w-full min-h-[160px] p-3 text-sm leading-relaxed border border-stone-200 rounded bg-white focus:ring-1 focus:ring-brand-green focus:border-brand-green outline-none resize-y"
                                         placeholder="Caption..."
                                     />
-                                    <div className="flex flex-wrap gap-2">
-                                        {post.generatedHashtags?.map((tag, idx) => (
-                                            <span key={idx} className="text-xs text-brand-green bg-brand-green/5 px-1.5 py-0.5 rounded border border-brand-green/10">#{tag}</span>
-                                        ))}
+                                    <div className="flex flex-wrap gap-1">
+                                        <input
+                                            type="text"
+                                            value={post.generatedHashtags?.map(h => `#${h}`).join(' ') || ''}
+                                            onChange={(e) => {
+                                                // Parse hashtags from input (split by space or #)
+                                                const hashtagText = e.target.value;
+                                                const hashtags = hashtagText
+                                                    .split(/[\s#]+/)
+                                                    .filter(tag => tag.trim().length > 0)
+                                                    .map(tag => tag.replace(/^#/, ''));
+                                                handleUpdatePost(post.id, 'generatedHashtags', hashtags);
+                                            }}
+                                            className="w-full p-2 text-xs text-brand-green bg-brand-green/5 border border-brand-green/20 rounded focus:ring-1 focus:ring-brand-green focus:border-brand-green outline-none"
+                                            placeholder="#hashtag1 #hashtag2 #hashtag3..."
+                                        />
                                     </div>
                                     <div className="flex gap-2 mt-auto pt-2">
                                         {/* Generate Caption - Only visible for master account */}
@@ -967,12 +1016,34 @@ export default function App() {
 
                             {/* Additional Comments Column */}
                             <td className="p-4 align-top">
-                                <textarea 
-                                    value={post.notes || ''}
-                                    onChange={(e) => handleUpdatePost(post.id, 'notes', e.target.value)}
-                                    className="w-full h-32 p-3 text-sm border border-stone-200 rounded bg-stone-50 focus:bg-white focus:ring-1 focus:ring-stone-400 focus:border-stone-400 outline-none resize-none transition-colors"
-                                    placeholder="Add client notes or feedback here..."
-                                />
+                                <div className="flex flex-col gap-2">
+                                    <textarea
+                                        value={post.notes || ''}
+                                        onChange={(e) => handleUpdatePost(post.id, 'notes', e.target.value)}
+                                        className="w-full h-32 p-3 text-sm border border-stone-200 rounded bg-stone-50 focus:bg-white focus:ring-1 focus:ring-stone-400 focus:border-stone-400 outline-none resize-none transition-colors"
+                                        placeholder="Add client notes or feedback here..."
+                                    />
+                                    {/* Update from Feedback - Only visible for master account */}
+                                    {isMasterAccount && post.notes && (
+                                        <button
+                                            onClick={() => handleUpdateFromFeedback(post)}
+                                            disabled={updatingFromFeedbackId === post.id}
+                                            className="w-full text-xs flex items-center justify-center gap-1 px-3 py-2 bg-amber-100 text-amber-800 border border-amber-200 rounded hover:bg-amber-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            {updatingFromFeedbackId === post.id ? (
+                                                <>
+                                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                                    Updating...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Sparkles className="w-3 h-3" />
+                                                    Update from Feedback
+                                                </>
+                                            )}
+                                        </button>
+                                    )}
+                                </div>
                             </td>
                         </tr>
                     ))}

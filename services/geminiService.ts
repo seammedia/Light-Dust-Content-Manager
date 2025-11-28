@@ -121,6 +121,90 @@ export const generateCaptionFromImage = async (
   }
 };
 
+// Update caption/hashtags based on client feedback
+export const updateFromFeedback = async (
+  currentCaption: string,
+  currentHashtags: string[],
+  feedback: string,
+  brandName: string
+): Promise<{ caption: string; hashtags: string[] }> => {
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('Gemini API key not configured.');
+  }
+
+  const genAI = getClient();
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.0-flash-exp",
+    systemInstruction: `
+      You are a social media copywriter for '${brandName}'.
+
+      Your task is to update existing Instagram content based on client feedback.
+
+      IMPORTANT RULES:
+      - NEVER use em dashes (—) or en dashes (–). Use commas or periods instead.
+      - Keep the same tone and style as the original.
+      - Only make changes that address the specific feedback.
+      - If feedback asks for more hashtags, add relevant ones.
+      - If feedback asks for changes to the caption, update it accordingly.
+    `,
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: SchemaType.OBJECT,
+        properties: {
+          caption: { type: SchemaType.STRING },
+          hashtags: {
+            type: SchemaType.ARRAY,
+            items: { type: SchemaType.STRING },
+          },
+        },
+        required: ["caption", "hashtags"],
+      },
+    },
+  });
+
+  const prompt = `
+    Here is the current Instagram post content:
+
+    CAPTION:
+    ${currentCaption}
+
+    HASHTAGS:
+    ${currentHashtags.map(h => `#${h}`).join(' ')}
+
+    CLIENT FEEDBACK:
+    "${feedback}"
+
+    Please update the caption and/or hashtags based on this feedback.
+    Return the updated caption and hashtags (without # symbols).
+    If the feedback only mentions hashtags, keep the caption the same but update hashtags.
+    If the feedback only mentions the caption, keep the hashtags the same but update the caption.
+  `;
+
+  try {
+    const result = await model.generateContent([{ text: prompt }]);
+    const response = result.response;
+    const text = response.text();
+
+    if (!text) throw new Error("No response from Gemini");
+
+    const parsed = JSON.parse(text);
+
+    let caption = parsed.caption || currentCaption;
+    caption = caption.replace(/—/g, ', ').replace(/–/g, ', ');
+
+    return {
+      caption,
+      hashtags: parsed.hashtags || currentHashtags,
+    };
+
+  } catch (error: any) {
+    console.error("Gemini Update Error:", error);
+    throw new Error(`Update failed: ${error.message || 'Unknown error'}`);
+  }
+};
+
 export const generatePostContent = async (
   imageDescription: string,
   brand: BrandContext,
