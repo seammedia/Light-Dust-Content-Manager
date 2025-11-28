@@ -6,6 +6,119 @@ import { supabase } from './services/supabaseClient';
 import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles } from 'lucide-react';
 import { generateCaptionFromImage, updateFromFeedback } from './services/geminiService';
 
+// Debounced Textarea Component - prevents typing lag
+function DebouncedTextarea({
+  value,
+  onChange,
+  className,
+  placeholder,
+  debounceMs = 500
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  className?: string;
+  placeholder?: string;
+  debounceMs?: number;
+}) {
+  const [localValue, setLocalValue] = useState(value);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Sync local value when external value changes (e.g., from AI generation)
+  useEffect(() => {
+    setLocalValue(value);
+  }, [value]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newValue = e.target.value;
+    setLocalValue(newValue);
+
+    // Clear existing timer
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+    }
+
+    // Set new debounce timer
+    timerRef.current = setTimeout(() => {
+      onChange(newValue);
+    }, debounceMs);
+  };
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+    };
+  }, []);
+
+  return (
+    <textarea
+      value={localValue}
+      onChange={handleChange}
+      className={className}
+      placeholder={placeholder}
+    />
+  );
+}
+
+// Debounced Input Component - for hashtags
+function DebouncedInput({
+  value,
+  onChange,
+  className,
+  placeholder,
+  debounceMs = 500
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  className?: string;
+  placeholder?: string;
+  debounceMs?: number;
+}) {
+  const [localValue, setLocalValue] = useState(value);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Sync local value when external value changes
+  useEffect(() => {
+    setLocalValue(value);
+  }, [value]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value;
+    setLocalValue(newValue);
+
+    // Clear existing timer
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+    }
+
+    // Set new debounce timer
+    timerRef.current = setTimeout(() => {
+      onChange(newValue);
+    }, debounceMs);
+  };
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+    };
+  }, []);
+
+  return (
+    <input
+      type="text"
+      value={localValue}
+      onChange={handleChange}
+      className={className}
+      placeholder={placeholder}
+    />
+  );
+}
+
 // Post Detail Modal Component
 function PostDetailModal({ post, onClose }: { post: Post, onClose: () => void }) {
   return (
@@ -931,20 +1044,18 @@ export default function App() {
                             {/* Caption Column */}
                             <td className="p-4 align-top border-r border-stone-200">
                                 <div className="h-full flex flex-col gap-3">
-                                    <textarea
+                                    <DebouncedTextarea
                                         value={post.generatedCaption || ''}
-                                        onChange={(e) => handleUpdatePost(post.id, 'generatedCaption', e.target.value)}
+                                        onChange={(value) => handleUpdatePost(post.id, 'generatedCaption', value)}
                                         className="w-full min-h-[160px] p-3 text-sm leading-relaxed border border-stone-200 rounded bg-white focus:ring-1 focus:ring-brand-green focus:border-brand-green outline-none resize-y"
                                         placeholder="Caption..."
                                     />
                                     <div className="flex flex-wrap gap-1">
-                                        <input
-                                            type="text"
+                                        <DebouncedInput
                                             value={post.generatedHashtags?.map(h => `#${h}`).join(' ') || ''}
-                                            onChange={(e) => {
+                                            onChange={(value) => {
                                                 // Parse hashtags from input (split by space or #)
-                                                const hashtagText = e.target.value;
-                                                const hashtags = hashtagText
+                                                const hashtags = value
                                                     .split(/[\s#]+/)
                                                     .filter(tag => tag.trim().length > 0)
                                                     .map(tag => tag.replace(/^#/, ''));
@@ -1017,9 +1128,9 @@ export default function App() {
                             {/* Additional Comments Column */}
                             <td className="p-4 align-top">
                                 <div className="flex flex-col gap-2">
-                                    <textarea
+                                    <DebouncedTextarea
                                         value={post.notes || ''}
-                                        onChange={(e) => handleUpdatePost(post.id, 'notes', e.target.value)}
+                                        onChange={(value) => handleUpdatePost(post.id, 'notes', value)}
                                         className="w-full h-32 p-3 text-sm border border-stone-200 rounded bg-stone-50 focus:bg-white focus:ring-1 focus:ring-stone-400 focus:border-stone-400 outline-none resize-none transition-colors"
                                         placeholder="Add client notes or feedback here..."
                                     />
