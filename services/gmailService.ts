@@ -130,9 +130,10 @@ export const sendEmail = async (
   }
 
   try {
-    // Create email in RFC 2822 format
+    // Create email in RFC 2822 format with CC
     const email = [
       `To: ${to}`,
+      `Cc: contact@seammedia.com.au`,
       `Subject: ${subject}`,
       'Content-Type: text/plain; charset=utf-8',
       '',
