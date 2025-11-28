@@ -5,6 +5,7 @@ import { MetaSettings } from './src/components/MetaSettings';
 import { supabase } from './services/supabaseClient';
 import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles, Mail } from 'lucide-react';
 import { generateCaptionFromImage, updateFromFeedback } from './services/geminiService';
+import { isGmailConnected, getConnectedEmail, connectGmail, sendEmail, clearGmailSettings } from './services/gmailService';
 
 // Debounced Textarea Component - prevents typing lag
 function DebouncedTextarea({
@@ -363,6 +364,11 @@ export default function App() {
   const [selectedMonth, setSelectedMonth] = useState<Date>(new Date());
   const [generatingCaptionId, setGeneratingCaptionId] = useState<string | null>(null);
   const [updatingFromFeedbackId, setUpdatingFromFeedbackId] = useState<string | null>(null);
+  const [gmailConnected, setGmailConnected] = useState(isGmailConnected());
+  const [gmailEmail, setGmailEmail] = useState(getConnectedEmail());
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailTo, setEmailTo] = useState('');
 
   // Debounce timer for database updates
   const debounceTimers = useRef<Record<string, NodeJS.Timeout>>({});
@@ -608,6 +614,75 @@ export default function App() {
       }
     } catch (error) {
       console.error('Auto-post error:', error);
+    }
+  };
+
+  const handleConnectGmail = async () => {
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      alert('Google Client ID not configured. Please add VITE_GOOGLE_CLIENT_ID to environment variables.');
+      return;
+    }
+
+    try {
+      const settings = await connectGmail(clientId);
+      setGmailConnected(true);
+      setGmailEmail(settings.email);
+      alert(`Gmail connected successfully! Sending from: ${settings.email}`);
+    } catch (error: any) {
+      alert(error.message || 'Failed to connect Gmail');
+    }
+  };
+
+  const handleDisconnectGmail = () => {
+    if (confirm('Disconnect Gmail account?')) {
+      clearGmailSettings();
+      setGmailConnected(false);
+      setGmailEmail(null);
+    }
+  };
+
+  const handleSendEmail = async () => {
+    if (!currentClient || !emailTo) {
+      alert('Please enter client email address');
+      return;
+    }
+
+    setSendingEmail(true);
+
+    const dashboardUrl = window.location.origin;
+    const subject = 'Your Social Calendar is Ready for Review';
+    const body = `Hi ${currentClient.name},
+
+Your social calendar is ready for review.
+
+Please visit the link below to view and approve your upcoming posts:
+${dashboardUrl}
+
+If you have any feedback or changes, please add them in the comments section for each post.
+
+Thanks,
+Heath`;
+
+    const result = await sendEmail(emailTo, subject, body);
+
+    setSendingEmail(false);
+
+    if (result.success) {
+      alert(`Email sent successfully to ${emailTo}!`);
+      setShowEmailModal(false);
+      setEmailTo('');
+
+      // Save the email to the client record for future use
+      if (currentClient && emailTo !== currentClient.contact_email) {
+        await supabase
+          .from('clients')
+          .update({ contact_email: emailTo })
+          .eq('id', currentClient.id);
+        setCurrentClient({ ...currentClient, contact_email: emailTo });
+      }
+    } else {
+      alert(result.error || 'Failed to send email');
     }
   };
 
@@ -949,10 +1024,15 @@ export default function App() {
                 {isMasterAccount && currentClient && (
                   <button
                     onClick={() => {
-                      const dashboardUrl = window.location.origin;
-                      const clientName = currentClient.name;
-                      const subject = encodeURIComponent(`Your Social Calendar is Ready for Review`);
-                      const body = encodeURIComponent(
+                      if (gmailConnected) {
+                        setEmailTo(currentClient.contact_email || '');
+                        setShowEmailModal(true);
+                      } else {
+                        // Fallback to mailto if Gmail not connected
+                        const dashboardUrl = window.location.origin;
+                        const clientName = currentClient.name;
+                        const subject = encodeURIComponent(`Your Social Calendar is Ready for Review`);
+                        const body = encodeURIComponent(
 `Hi ${clientName},
 
 Your social calendar is ready for review.
@@ -964,13 +1044,15 @@ If you have any feedback or changes, please add them in the comments section for
 
 Thanks,
 Heath`
-                      );
-                      window.open(`mailto:?subject=${subject}&body=${body}`, '_blank');
+                        );
+                        window.open(`mailto:?subject=${subject}&body=${body}`, '_blank');
+                      }
                     }}
                     className="bg-stone-100 hover:bg-stone-200 text-stone-700 px-4 py-2 rounded-lg font-medium text-sm transition-all shadow-sm border border-stone-300 flex items-center gap-2"
                   >
                     <Mail className="w-4 h-4" />
                     Email Client
+                    {gmailConnected && <span className="w-2 h-2 bg-green-500 rounded-full"></span>}
                   </button>
                 )}
                 <button
@@ -1268,6 +1350,109 @@ Heath`
           }}
           onClose={() => setShowMetaSettings(false)}
         />
+      )}
+
+      {/* Email Client Modal */}
+      {showEmailModal && currentClient && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowEmailModal(false)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <Mail className="w-6 h-6 text-brand-green" />
+              <h2 className="text-xl font-serif font-bold text-brand-dark">Email Client</h2>
+            </div>
+
+            <div className="mb-4 text-sm text-stone-600">
+              <p>Sending from: <span className="font-medium text-brand-dark">{gmailEmail}</span></p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-stone-700 mb-1">To:</label>
+                <input
+                  type="email"
+                  value={emailTo}
+                  onChange={(e) => setEmailTo(e.target.value)}
+                  placeholder="client@example.com"
+                  className="w-full px-3 py-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-brand-green focus:border-brand-green outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-stone-700 mb-1">Subject:</label>
+                <p className="text-sm text-stone-600 bg-stone-50 px-3 py-2 rounded-lg">
+                  Your Social Calendar is Ready for Review
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-stone-700 mb-1">Message Preview:</label>
+                <div className="text-sm text-stone-600 bg-stone-50 px-3 py-2 rounded-lg whitespace-pre-wrap max-h-40 overflow-y-auto">
+{`Hi ${currentClient.name},
+
+Your social calendar is ready for review.
+
+Please visit the link below to view and approve your upcoming posts:
+${window.location.origin}
+
+If you have any feedback or changes, please add them in the comments section for each post.
+
+Thanks,
+Heath`}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowEmailModal(false)}
+                className="flex-1 px-4 py-2 border border-stone-300 rounded-lg text-stone-700 hover:bg-stone-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSendEmail}
+                disabled={sendingEmail || !emailTo}
+                className="flex-1 px-4 py-2 bg-brand-green text-white rounded-lg hover:bg-emerald-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {sendingEmail ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Mail className="w-4 h-4" />
+                    Send Email
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Gmail Settings - floating button for master account */}
+      {isMasterAccount && isAuthenticated && (
+        <div className="fixed bottom-4 right-4 z-40">
+          {gmailConnected ? (
+            <button
+              onClick={handleDisconnectGmail}
+              className="bg-white border border-stone-300 shadow-lg rounded-full px-4 py-2 text-sm flex items-center gap-2 hover:bg-stone-50 transition-colors"
+              title={`Connected as ${gmailEmail}`}
+            >
+              <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+              Gmail Connected
+            </button>
+          ) : (
+            <button
+              onClick={handleConnectGmail}
+              className="bg-brand-green text-white shadow-lg rounded-full px-4 py-2 text-sm flex items-center gap-2 hover:bg-emerald-800 transition-colors"
+            >
+              <Mail className="w-4 h-4" />
+              Connect Gmail
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

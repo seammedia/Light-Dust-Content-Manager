@@ -6,6 +6,7 @@ export interface Client {
   brand_mission?: string;
   brand_tone?: string;
   brand_keywords?: string[];
+  contact_email?: string;
   meta_page_id?: string;
   meta_access_token?: string;
   instagram_account_id?: string;
@@ -15,6 +16,14 @@ export interface Client {
   auto_post_to_instagram?: boolean;
   created_at: string;
   updated_at: string;
+}
+
+// Gmail OAuth settings (stored in localStorage for single sender)
+export interface GmailSettings {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+  email: string;
 }
 
 export interface Post {
