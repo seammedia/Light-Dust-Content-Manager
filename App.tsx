@@ -1019,10 +1019,17 @@ Heath`;
 
           {viewMode === 'table' ? (
             <>
-              {/* Action Buttons - positioned above table columns */}
-              <div className="mb-2 flex justify-between items-center">
-                {/* Approve All - positioned above Approval Status column */}
-                <div className="flex-1 flex justify-end" style={{ paddingRight: 'calc(16.67% + 24px)' }}>
+              {/* Action Buttons - positioned above table columns to match column widths */}
+              {/* Table columns: Date(w-32) | Creative(w-64) | Caption(flex) | Approval Status(w-48) | Additional Comments(w-64) */}
+              <div className="mb-2 flex items-center">
+                {/* Spacer for Date column */}
+                <div className="w-32 shrink-0"></div>
+                {/* Spacer for Creative column */}
+                <div className="w-64 shrink-0"></div>
+                {/* Spacer for Caption column (flex) */}
+                <div className="flex-1"></div>
+                {/* Approve All - above Approval Status column (w-48) */}
+                <div className="w-48 shrink-0 px-4">
                   <button
                     onClick={async () => {
                       if (confirm(`Approve all ${filteredPosts.length} posts in this month?`)) {
@@ -1038,9 +1045,9 @@ Heath`;
                     Approve All
                   </button>
                 </div>
-                {/* Email Client Button - Master account only, far right above Additional Comments */}
-                {isMasterAccount && currentClient && (
-                  <div className="w-64 flex justify-end">
+                {/* Email Client Button - above Additional Comments column (w-64) */}
+                <div className="w-64 shrink-0 px-4 flex justify-end">
+                  {isMasterAccount && currentClient && (
                     <button
                       onClick={() => {
                         if (gmailConnected) {
@@ -1073,8 +1080,8 @@ Heath`
                       Email Client
                       {gmailConnected && <span className="w-2 h-2 bg-green-500 rounded-full"></span>}
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
 
               <div className="bg-white rounded-lg shadow-sm border border-stone-300 overflow-hidden">
