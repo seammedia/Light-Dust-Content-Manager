@@ -1019,21 +1019,39 @@ Heath`;
 
           {viewMode === 'table' ? (
             <>
-              {/* Action Buttons - positioned above Approval Status column */}
-              <div className="mb-2 flex justify-end gap-2" style={{ paddingRight: 'calc(16.67% + 24px)' }}>
-                {/* Email Client Button - Master account only */}
-                {isMasterAccount && currentClient && (
+              {/* Action Buttons - positioned above table columns */}
+              <div className="mb-2 flex justify-between items-center">
+                {/* Approve All - positioned above Approval Status column */}
+                <div className="flex-1 flex justify-end" style={{ paddingRight: 'calc(16.67% + 24px)' }}>
                   <button
-                    onClick={() => {
-                      if (gmailConnected) {
-                        setEmailTo(currentClient.contact_email || '');
-                        setShowEmailModal(true);
-                      } else {
-                        // Fallback to mailto if Gmail not connected
-                        const dashboardUrl = window.location.origin;
-                        const clientName = currentClient.name;
-                        const subject = encodeURIComponent(`Your Social Calendar is Ready for Review`);
-                        const body = encodeURIComponent(
+                    onClick={async () => {
+                      if (confirm(`Approve all ${filteredPosts.length} posts in this month?`)) {
+                        const updates = filteredPosts.map(post =>
+                          supabase.from('posts').update({ status: 'Approved' }).eq('id', post.id)
+                        );
+                        await Promise.all(updates);
+                        fetchPosts();
+                      }
+                    }}
+                    className="bg-brand-green hover:bg-emerald-800 text-white px-4 py-2 rounded-lg font-medium text-sm transition-all shadow-sm"
+                  >
+                    Approve All
+                  </button>
+                </div>
+                {/* Email Client Button - Master account only, far right above Additional Comments */}
+                {isMasterAccount && currentClient && (
+                  <div className="w-64 flex justify-end">
+                    <button
+                      onClick={() => {
+                        if (gmailConnected) {
+                          setEmailTo(currentClient.contact_email || '');
+                          setShowEmailModal(true);
+                        } else {
+                          // Fallback to mailto if Gmail not connected
+                          const dashboardUrl = window.location.origin;
+                          const clientName = currentClient.name;
+                          const subject = encodeURIComponent(`Your Social Calendar is Ready for Review`);
+                          const body = encodeURIComponent(
 `Hi ${clientName},
 
 Your social calendar is ready for review.
@@ -1045,31 +1063,18 @@ If you have any feedback or changes, please add them in the comments section for
 
 Thanks,
 Heath`
-                        );
-                        window.open(`mailto:?subject=${subject}&body=${body}`, '_blank');
-                      }
-                    }}
-                    className="bg-stone-100 hover:bg-stone-200 text-stone-700 px-4 py-2 rounded-lg font-medium text-sm transition-all shadow-sm border border-stone-300 flex items-center gap-2"
-                  >
-                    <Mail className="w-4 h-4" />
-                    Email Client
-                    {gmailConnected && <span className="w-2 h-2 bg-green-500 rounded-full"></span>}
-                  </button>
+                          );
+                          window.open(`mailto:?subject=${subject}&body=${body}`, '_blank');
+                        }
+                      }}
+                      className="bg-stone-100 hover:bg-stone-200 text-stone-700 px-4 py-2 rounded-lg font-medium text-sm transition-all shadow-sm border border-stone-300 flex items-center gap-2"
+                    >
+                      <Mail className="w-4 h-4" />
+                      Email Client
+                      {gmailConnected && <span className="w-2 h-2 bg-green-500 rounded-full"></span>}
+                    </button>
+                  </div>
                 )}
-                <button
-                  onClick={async () => {
-                    if (confirm(`Approve all ${filteredPosts.length} posts in this month?`)) {
-                      const updates = filteredPosts.map(post =>
-                        supabase.from('posts').update({ status: 'Approved' }).eq('id', post.id)
-                      );
-                      await Promise.all(updates);
-                      fetchPosts();
-                    }
-                  }}
-                  className="bg-brand-green hover:bg-emerald-800 text-white px-4 py-2 rounded-lg font-medium text-sm transition-all shadow-sm"
-                >
-                  Approve All
-                </button>
               </div>
 
               <div className="bg-white rounded-lg shadow-sm border border-stone-300 overflow-hidden">
