@@ -1626,11 +1626,28 @@ Heath`}
                         onChange={() => toggleProfileSelection(profile.id)}
                         className="w-4 h-4 text-blue-600 rounded border-stone-300 focus:ring-blue-500"
                       />
-                      {profile.profilePicture && (
-                        <img src={profile.profilePicture} alt="" className="w-8 h-8 rounded-full" />
-                      )}
-                      <div className="flex-1">
-                        <p className="font-medium text-stone-800">{profile.username}</p>
+                      {/* Platform Icon */}
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${
+                        profile.platform === 'instagram' ? 'bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400' :
+                        profile.platform === 'facebook' ? 'bg-blue-600' :
+                        profile.platform === 'tiktok' ? 'bg-black' :
+                        profile.platform === 'twitter' || profile.platform === 'x' ? 'bg-black' :
+                        profile.platform === 'linkedin' ? 'bg-blue-700' :
+                        profile.platform === 'youtube' ? 'bg-red-600' :
+                        profile.platform === 'pinterest' ? 'bg-red-500' :
+                        'bg-stone-500'
+                      }`}>
+                        {profile.platform === 'instagram' ? 'IG' :
+                         profile.platform === 'facebook' ? 'FB' :
+                         profile.platform === 'tiktok' ? 'TT' :
+                         profile.platform === 'twitter' || profile.platform === 'x' ? 'X' :
+                         profile.platform === 'linkedin' ? 'IN' :
+                         profile.platform === 'youtube' ? 'YT' :
+                         profile.platform === 'pinterest' ? 'PI' :
+                         profile.platform?.substring(0, 2).toUpperCase() || '?'}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-stone-800 truncate">{profile.username || profile.platform}</p>
                         <p className="text-xs text-stone-500 capitalize">{profile.platform}</p>
                       </div>
                     </label>

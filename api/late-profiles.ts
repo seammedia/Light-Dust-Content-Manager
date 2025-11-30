@@ -30,13 +30,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
+      console.error('Late API error response:', error);
       return res.status(response.status).json({
-        error: error.message || `Late API error: ${response.status}`
+        error: error.message || error.error || `Late API error: ${response.status}`
       });
     }
 
     const data = await response.json();
-    return res.status(200).json(data);
+    console.log('Late API profiles response:', JSON.stringify(data, null, 2));
+
+    // Normalize the response - Late API may return different structures
+    // Handle both array and object with profiles/connections keys
+    let profiles = [];
+
+    if (Array.isArray(data)) {
+      profiles = data;
+    } else if (data.profiles) {
+      profiles = data.profiles;
+    } else if (data.connections) {
+      profiles = data.connections;
+    } else if (data.accounts) {
+      profiles = data.accounts;
+    } else if (data.data) {
+      profiles = Array.isArray(data.data) ? data.data : [data.data];
+    }
+
+    // Map to a consistent format
+    const normalizedProfiles = profiles.map((p: any) => ({
+      id: p.id || p.accountId || p.account_id,
+      platform: p.platform || p.network || p.type || 'unknown',
+      username: p.username || p.name || p.handle || p.displayName || p.display_name || '',
+      profilePicture: p.profilePicture || p.profile_picture || p.avatar || p.image || p.picture || '',
+    }));
+
+    return res.status(200).json({ profiles: normalizedProfiles });
   } catch (error) {
     console.error('Late API profiles error:', error);
     return res.status(500).json({
