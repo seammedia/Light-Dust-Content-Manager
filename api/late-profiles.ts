@@ -1,8 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 /**
- * Vercel Serverless Function for Late API - Get Profiles
+ * Vercel Serverless Function for Late API - Get Accounts
  * Proxies requests to Late API to avoid CORS issues
+ * Uses /accounts endpoint to get individual platform connections
  */
 
 const LATE_API_BASE = 'https://getlate.dev/api/v1';
@@ -20,7 +21,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const response = await fetch(`${LATE_API_BASE}/profiles`, {
+    // Use /accounts endpoint to get individual social media accounts
+    const response = await fetch(`${LATE_API_BASE}/accounts`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
@@ -37,35 +39,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const data = await response.json();
-    console.log('Late API profiles response:', JSON.stringify(data, null, 2));
+    console.log('Late API accounts response:', JSON.stringify(data, null, 2));
 
-    // Normalize the response - Late API may return different structures
-    // Handle both array and object with profiles/connections keys
-    let profiles = [];
+    // Normalize the response - Late API returns accounts array
+    let accounts = [];
 
     if (Array.isArray(data)) {
-      profiles = data;
-    } else if (data.profiles) {
-      profiles = data.profiles;
-    } else if (data.connections) {
-      profiles = data.connections;
+      accounts = data;
     } else if (data.accounts) {
-      profiles = data.accounts;
+      accounts = data.accounts;
     } else if (data.data) {
-      profiles = Array.isArray(data.data) ? data.data : [data.data];
+      accounts = Array.isArray(data.data) ? data.data : [data.data];
     }
 
-    // Map to a consistent format
-    const normalizedProfiles = profiles.map((p: any) => ({
-      id: p.id || p.accountId || p.account_id,
-      platform: p.platform || p.network || p.type || 'unknown',
-      username: p.username || p.name || p.handle || p.displayName || p.display_name || '',
-      profilePicture: p.profilePicture || p.profile_picture || p.avatar || p.image || p.picture || '',
-    }));
+    // Map to a consistent format matching Late API response structure
+    // Late returns: _id, profileId, platform, username, displayName, profilePicture, isActive
+    const normalizedProfiles = accounts
+      .filter((a: any) => a.isActive !== false) // Only include active accounts
+      .map((a: any) => ({
+        id: a._id || a.id || a.accountId,
+        platform: (a.platform || 'unknown').toLowerCase(),
+        username: a.username || a.displayName || a.display_name || a.name || '',
+        profilePicture: a.profilePicture || a.profile_picture || a.avatar || '',
+      }));
 
     return res.status(200).json({ profiles: normalizedProfiles });
   } catch (error) {
-    console.error('Late API profiles error:', error);
+    console.error('Late API accounts error:', error);
     return res.status(500).json({
       error: error instanceof Error ? error.message : 'Unknown error',
     });
