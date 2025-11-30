@@ -1,7 +1,6 @@
 // Late API Service for social media scheduling
+// Uses serverless API routes to proxy requests (avoids CORS issues)
 // Documentation: https://getlate.dev/
-
-const LATE_API_BASE = 'https://getlate.dev/api/v1';
 
 export interface LateProfile {
   id: string;
@@ -25,51 +24,34 @@ export interface ScheduledPost {
   status: string;
 }
 
-// Get API key from environment
-const getApiKey = (): string | null => {
-  return import.meta.env.VITE_LATE_API_KEY || null;
-};
-
-// Check if Late API is configured
+// Check if Late API is configured (by checking if env var exists)
 export const isLateConfigured = (): boolean => {
-  return !!getApiKey();
+  return !!import.meta.env.VITE_LATE_API_KEY;
 };
 
-// Fetch connected profiles from Late
+// Fetch connected profiles from Late (via serverless proxy)
 export const getProfiles = async (): Promise<LateProfile[]> => {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    throw new Error('Late API key not configured');
-  }
-
-  const response = await fetch(`${LATE_API_BASE}/profiles`, {
+  const response = await fetch('/api/late-profiles', {
     method: 'GET',
     headers: {
-      'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
   });
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.message || `Failed to fetch profiles: ${response.status}`);
+    throw new Error(error.error || `Failed to fetch profiles: ${response.status}`);
   }
 
   const data = await response.json();
   return data.profiles || data || [];
 };
 
-// Schedule a post via Late API
+// Schedule a post via Late API (via serverless proxy)
 export const schedulePost = async (params: SchedulePostParams): Promise<{ id: string }> => {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    throw new Error('Late API key not configured');
-  }
-
-  const response = await fetch(`${LATE_API_BASE}/posts`, {
+  const response = await fetch('/api/late-schedule', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -82,53 +64,41 @@ export const schedulePost = async (params: SchedulePostParams): Promise<{ id: st
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.message || `Failed to schedule post: ${response.status}`);
+    throw new Error(error.error || `Failed to schedule post: ${response.status}`);
   }
 
   return response.json();
 };
 
-// Get scheduled posts from Late
+// Get scheduled posts from Late (via serverless proxy)
 export const getScheduledPosts = async (): Promise<ScheduledPost[]> => {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    throw new Error('Late API key not configured');
-  }
-
-  const response = await fetch(`${LATE_API_BASE}/posts`, {
+  const response = await fetch('/api/late-posts', {
     method: 'GET',
     headers: {
-      'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
   });
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.message || `Failed to fetch scheduled posts: ${response.status}`);
+    throw new Error(error.error || `Failed to fetch scheduled posts: ${response.status}`);
   }
 
   const data = await response.json();
   return data.posts || data || [];
 };
 
-// Delete a scheduled post
+// Delete a scheduled post (via serverless proxy)
 export const deleteScheduledPost = async (postId: string): Promise<void> => {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    throw new Error('Late API key not configured');
-  }
-
-  const response = await fetch(`${LATE_API_BASE}/posts/${postId}`, {
+  const response = await fetch(`/api/late-posts?id=${postId}`, {
     method: 'DELETE',
     headers: {
-      'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
   });
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.message || `Failed to delete post: ${response.status}`);
+    throw new Error(error.error || `Failed to delete post: ${response.status}`);
   }
 };
