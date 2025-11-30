@@ -12,6 +12,7 @@ interface SchedulePostRequest {
   content: string;
   mediaUrls?: string[];
   scheduledFor: string;
+  timezone?: string;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -27,12 +28,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { platforms, content, mediaUrls, scheduledFor } = req.body as SchedulePostRequest;
+    const { platforms, content, mediaUrls, scheduledFor, timezone } = req.body as SchedulePostRequest;
 
     // Validate required fields
     if (!platforms || !content || !scheduledFor) {
       return res.status(400).json({ error: 'Missing required fields: platforms, content, scheduledFor' });
     }
+
+    // Build the request body according to Late API spec
+    const requestBody: any = {
+      platforms,
+      content,
+      scheduledFor,
+      timezone: timezone || 'Australia/Sydney', // Default timezone
+      publishNow: false,
+      isDraft: false,
+    };
+
+    // Add media items if provided (Late expects mediaItems array with type and url)
+    if (mediaUrls && mediaUrls.length > 0) {
+      // Filter out base64 data URLs as Late API needs public URLs
+      const publicUrls = mediaUrls.filter(url => !url.startsWith('data:'));
+      if (publicUrls.length > 0) {
+        requestBody.mediaItems = publicUrls.map(url => ({
+          type: 'image',
+          url: url,
+        }));
+      }
+    }
+
+    console.log('Late API schedule request:', JSON.stringify(requestBody, null, 2));
 
     const response = await fetch(`${LATE_API_BASE}/posts`, {
       method: 'POST',
@@ -40,22 +65,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        platforms,
-        content,
-        mediaUrls: mediaUrls || [],
-        scheduledFor,
-      }),
+      body: JSON.stringify(requestBody),
     });
 
+    const responseText = await response.text();
+    console.log('Late API schedule response:', response.status, responseText);
+
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
+      let error;
+      try {
+        error = JSON.parse(responseText);
+      } catch {
+        error = { message: responseText };
+      }
       return res.status(response.status).json({
-        error: error.message || `Late API error: ${response.status}`
+        error: error.message || error.error || `Late API error: ${response.status}`
       });
     }
 
-    const data = await response.json();
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      data = { success: true };
+    }
+
     return res.status(200).json(data);
   } catch (error) {
     console.error('Late API schedule error:', error);
