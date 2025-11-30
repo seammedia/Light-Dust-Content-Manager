@@ -3,9 +3,10 @@ import { Post, BrandContext, Client } from './types';
 import { PostEditor } from './components/PostEditor';
 import { MetaSettings } from './src/components/MetaSettings';
 import { supabase } from './services/supabaseClient';
-import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles, Mail } from 'lucide-react';
+import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles, Mail, Clock, Send } from 'lucide-react';
 import { generateCaptionFromImage, updateFromFeedback } from './services/geminiService';
 import { isGmailConnected, getConnectedEmail, connectGmail, sendEmail, clearGmailSettings } from './services/gmailService';
+import { isLateConfigured, getProfiles, schedulePost, LateProfile } from './services/lateService';
 
 // Debounced Textarea Component - prevents typing lag
 function DebouncedTextarea({
@@ -370,6 +371,14 @@ export default function App() {
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [emailTo, setEmailTo] = useState('');
 
+  // Schedule Posts state
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [lateProfiles, setLateProfiles] = useState<LateProfile[]>([]);
+  const [selectedProfiles, setSelectedProfiles] = useState<string[]>([]);
+  const [loadingProfiles, setLoadingProfiles] = useState(false);
+  const [schedulingPosts, setSchedulingPosts] = useState(false);
+  const [scheduleTime, setScheduleTime] = useState('10:00');
+
   // Debounce timer for database updates
   const debounceTimers = useRef<Record<string, NodeJS.Timeout>>({});
 
@@ -640,6 +649,100 @@ export default function App() {
       setGmailConnected(false);
       setGmailEmail(null);
     }
+  };
+
+  // Schedule Posts handlers
+  const handleOpenScheduleModal = async () => {
+    setShowScheduleModal(true);
+    setLoadingProfiles(true);
+    try {
+      const profiles = await getProfiles();
+      setLateProfiles(profiles);
+      // Auto-select all profiles by default
+      setSelectedProfiles(profiles.map(p => p.id));
+    } catch (error: any) {
+      console.error('Error fetching Late profiles:', error);
+      alert(error.message || 'Failed to load social media profiles. Please check your Late API key.');
+    } finally {
+      setLoadingProfiles(false);
+    }
+  };
+
+  const handleSchedulePosts = async () => {
+    if (selectedProfiles.length === 0) {
+      alert('Please select at least one social media profile');
+      return;
+    }
+
+    const approvedPosts = filteredPosts.filter(p => p.status === 'Approved');
+    if (approvedPosts.length === 0) {
+      alert('No approved posts to schedule. Please approve posts first.');
+      return;
+    }
+
+    setSchedulingPosts(true);
+    let successCount = 0;
+    let errorCount = 0;
+
+    try {
+      for (const post of approvedPosts) {
+        // Build caption with hashtags
+        let content = post.generatedCaption || '';
+        if (post.generatedHashtags && post.generatedHashtags.length > 0) {
+          content += '\n\n' + post.generatedHashtags.map(tag => `#${tag}`).join(' ');
+        }
+
+        // Build scheduled datetime from post date + selected time
+        const scheduledDateTime = `${post.date}T${scheduleTime}:00`;
+        const scheduledFor = new Date(scheduledDateTime).toISOString();
+
+        // Build platforms array
+        const platforms = selectedProfiles.map(profileId => {
+          const profile = lateProfiles.find(p => p.id === profileId);
+          return {
+            platform: profile?.platform || 'instagram',
+            accountId: profileId,
+          };
+        });
+
+        try {
+          await schedulePost({
+            platforms,
+            content,
+            mediaUrls: post.imageUrl ? [post.imageUrl] : [],
+            scheduledFor,
+          });
+          successCount++;
+
+          // Update post status to "Posted" (or you could add a "Scheduled" status)
+          await handleUpdatePost(post.id, 'status', 'Posted');
+        } catch (error: any) {
+          console.error(`Error scheduling post ${post.id}:`, error);
+          errorCount++;
+        }
+      }
+
+      if (successCount > 0) {
+        alert(`Successfully scheduled ${successCount} post(s)!${errorCount > 0 ? ` (${errorCount} failed)` : ''}`);
+      } else {
+        alert('Failed to schedule posts. Please check your Late API configuration.');
+      }
+
+      setShowScheduleModal(false);
+    } catch (error: any) {
+      console.error('Error scheduling posts:', error);
+      alert(error.message || 'Failed to schedule posts');
+    } finally {
+      setSchedulingPosts(false);
+    }
+  };
+
+  const toggleProfileSelection = (profileId: string) => {
+    setSelectedProfiles(prev =>
+      prev.includes(profileId)
+        ? prev.filter(id => id !== profileId)
+        : [...prev, profileId]
+    );
   };
 
   const handleSendEmail = async () => {
@@ -1045,8 +1148,18 @@ Heath`;
                     Approve All
                   </button>
                 </div>
-                {/* Email Client Button - above Additional Comments column (w-64) */}
-                <div className="w-64 shrink-0 px-4 flex justify-end">
+                {/* Schedule Posts & Email Client Buttons - above Additional Comments column (w-64) */}
+                <div className="w-64 shrink-0 px-4 flex justify-end gap-2">
+                  {isMasterAccount && currentClient && isLateConfigured() && (
+                    <button
+                      onClick={handleOpenScheduleModal}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition-all shadow-sm flex items-center gap-2"
+                      title="Schedule approved posts to social media"
+                    >
+                      <Clock className="w-4 h-4" />
+                      Schedule Posts
+                    </button>
+                  )}
                   {isMasterAccount && currentClient && (
                     <button
                       onClick={() => {
@@ -1450,6 +1563,113 @@ Heath`}
                   <>
                     <Mail className="w-4 h-4" />
                     Send Email
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Schedule Posts Modal */}
+      {showScheduleModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowScheduleModal(false)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <Clock className="w-6 h-6 text-blue-600" />
+              <h2 className="text-xl font-serif font-bold text-brand-dark">Schedule Posts</h2>
+            </div>
+
+            <div className="mb-4 text-sm text-stone-600">
+              <p>Schedule <span className="font-bold text-blue-600">{filteredPosts.filter(p => p.status === 'Approved').length}</span> approved posts to your connected social media accounts.</p>
+            </div>
+
+            {/* Post Time Selection */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-stone-700 mb-2">Post Time (for each post's date)</label>
+              <input
+                type="time"
+                value={scheduleTime}
+                onChange={(e) => setScheduleTime(e.target.value)}
+                className="w-full px-3 py-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              />
+              <p className="text-xs text-stone-500 mt-1">Posts will be scheduled at this time on their respective dates</p>
+            </div>
+
+            {/* Profile Selection */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-stone-700 mb-2">Select Platforms</label>
+              {loadingProfiles ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                  <span className="ml-2 text-stone-500">Loading profiles...</span>
+                </div>
+              ) : lateProfiles.length === 0 ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm">
+                  <p className="text-amber-800 font-medium">No social profiles connected</p>
+                  <p className="text-amber-700 mt-1">Please connect your social media accounts at <a href="https://getlate.dev" target="_blank" rel="noopener noreferrer" className="underline">getlate.dev</a></p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-48 overflow-y-auto border border-stone-200 rounded-lg p-2">
+                  {lateProfiles.map((profile) => (
+                    <label
+                      key={profile.id}
+                      className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
+                        selectedProfiles.includes(profile.id)
+                          ? 'bg-blue-50 border-2 border-blue-500'
+                          : 'bg-stone-50 border-2 border-transparent hover:bg-stone-100'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedProfiles.includes(profile.id)}
+                        onChange={() => toggleProfileSelection(profile.id)}
+                        className="w-4 h-4 text-blue-600 rounded border-stone-300 focus:ring-blue-500"
+                      />
+                      {profile.profilePicture && (
+                        <img src={profile.profilePicture} alt="" className="w-8 h-8 rounded-full" />
+                      )}
+                      <div className="flex-1">
+                        <p className="font-medium text-stone-800">{profile.username}</p>
+                        <p className="text-xs text-stone-500 capitalize">{profile.platform}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Summary */}
+            {lateProfiles.length > 0 && (
+              <div className="mb-4 bg-blue-50 rounded-lg p-3 text-sm">
+                <p className="text-blue-800">
+                  <span className="font-bold">{filteredPosts.filter(p => p.status === 'Approved').length}</span> posts will be scheduled to{' '}
+                  <span className="font-bold">{selectedProfiles.length}</span> platform(s)
+                </p>
+              </div>
+            )}
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowScheduleModal(false)}
+                className="flex-1 px-4 py-2 border border-stone-300 rounded-lg text-stone-700 hover:bg-stone-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSchedulePosts}
+                disabled={schedulingPosts || selectedProfiles.length === 0 || filteredPosts.filter(p => p.status === 'Approved').length === 0}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {schedulingPosts ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Scheduling...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    Schedule Posts
                   </>
                 )}
               </button>
