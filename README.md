@@ -18,6 +18,10 @@ A multi-client social content management platform where agencies can manage mult
 - ✨ **AI Caption Generation** - Generate captions and hashtags from images using Gemini AI (master account only)
 - 📧 **Gmail Integration** - Send review notification emails directly from the dashboard
 - 🏷️ **Editable Hashtags** - Click to edit hashtags inline
+- 📅 **Late API Scheduling** - Schedule approved posts to Instagram, Facebook, TikTok and more
+- 🖼️ **Auto Image Cropping** - Automatically crops images to fit Instagram's aspect ratio requirements
+- ☁️ **Supabase Storage** - Images stored as public URLs for social media compatibility
+- 🧹 **Auto Cleanup** - Old images automatically deleted after 60 days to save storage
 
 ## Setup Instructions
 
@@ -71,7 +75,49 @@ A multi-client social content management platform where agencies can manage mult
 - Staff need to click "Connect Gmail" to re-authenticate when expired
 - Recommended: Use a shared Gmail account (e.g., `sales@seammedia.com.au`) that staff can authenticate with
 
-### 4. Vercel Deployment
+### 4. Late API Setup (For Social Media Scheduling)
+
+1. Go to [Late](https://getlate.dev) and create an account
+2. Connect your social media accounts (Instagram, Facebook, TikTok, etc.) under **Connections**
+3. Go to **API Keys** and create a new key (name it "Content Manager")
+4. Add to Vercel as `VITE_LATE_API_KEY`
+
+**Features:**
+- Schedule posts to Instagram, Facebook, TikTok, LinkedIn, X, YouTube, Threads, Pinterest
+- Posts scheduled when clicking "Schedule Posts" button (master account only)
+- Only schedules posts with "Approved" status
+- Automatically updates status to "Posted" after scheduling
+
+**Pricing:**
+- Free tier: 10 posts/month, 2 profiles
+- Paid: $19/mo (120 posts) or $49/mo (unlimited)
+
+### 5. Supabase Storage Setup (For Images)
+
+Images must be stored as public URLs for Late API to access them.
+
+1. Go to Supabase Dashboard → **Storage**
+2. Click **"New bucket"**
+3. Name it: **`post-images`**
+4. **Enable "Public bucket"** (toggle ON)
+5. Add storage policy:
+   - Policy name: `Allow public uploads`
+   - Operations: SELECT, INSERT, UPDATE, DELETE
+   - Target roles: anon, authenticated
+   - Policy definition: `true`
+
+**Auto-Cropping:**
+- Images automatically cropped to fit Instagram's aspect ratio (0.75 to 1.91)
+- Too tall images → cropped to 4:5 portrait
+- Too wide images → cropped to 1.91:1 landscape
+- Crop is centered on original image
+
+**Auto-Cleanup:**
+- Images automatically deleted 60 days after post is marked "Posted"
+- Runs daily via Vercel Cron (requires Pro plan) or manual trigger
+- Manual cleanup: Visit `/api/cleanup-storage`
+
+### 6. Vercel Deployment
 
 1. Push your code to GitHub
 2. Go to [Vercel](https://vercel.com) and import your repository
@@ -82,13 +128,14 @@ A multi-client social content management platform where agencies can manage mult
    VITE_SUPABASE_ANON_KEY=your_supabase_anon_key_here
    VITE_GEMINI_API_KEY=your_gemini_api_key_here
    VITE_GOOGLE_CLIENT_ID=your_google_oauth_client_id_here
+   VITE_LATE_API_KEY=your_late_api_key_here
    ```
 
    ⚠️ **Important**: All variables MUST start with `VITE_` or they won't work!
 
 4. Deploy your application
 
-### 5. Local Development
+### 7. Local Development
 
 1. Clone the repository:
    ```bash
@@ -107,6 +154,7 @@ A multi-client social content management platform where agencies can manage mult
    VITE_SUPABASE_ANON_KEY=your_supabase_anon_key_here
    VITE_GEMINI_API_KEY=your_gemini_api_key_here
    VITE_GOOGLE_CLIENT_ID=your_google_oauth_client_id_here
+   VITE_LATE_API_KEY=your_late_api_key_here
    ```
 
 4. Run the development server:
@@ -136,6 +184,7 @@ See `CLIENT-PINS.md` for all client access credentials.
 6. **Update from Feedback** - Click "Update from Feedback" button to have AI update caption/hashtags based on client notes
 7. **Email Client** - Click "Email Client" button to send review notification email directly from dashboard
 8. **Connect Gmail** - Click floating button (bottom-right) to connect Gmail for sending emails
+9. **Schedule Posts** - Click "Schedule Posts" button to schedule all approved posts to connected social media platforms via Late API
 
 ### Client Account:
 1. **Login** - Enter your unique PIN (e.g., `5678` for Light Dust)
@@ -351,9 +400,86 @@ posts
 - Data isolation and security
 - Easy client onboarding
 
+## Late API Integration (Social Media Scheduling)
+
+The content manager integrates with [Late API](https://getlate.dev) for scheduling posts to social media platforms.
+
+### How It Works
+
+1. **Upload Image** - Image is uploaded to Supabase Storage (auto-cropped for Instagram)
+2. **Generate Caption** - AI generates caption and hashtags from image
+3. **Client Approval** - Client reviews and approves the post
+4. **Schedule** - Agency clicks "Schedule Posts" to send to Late API
+5. **Published** - Late publishes to connected platforms at scheduled time
+
+### Scheduling Flow
+
+| Post Status | What Happens |
+|-------------|--------------|
+| For Approval | Not scheduled (waiting for client) |
+| Needs Changes | Not scheduled (client requested changes) |
+| **Approved** | Ready to schedule |
+| Posted | Already scheduled, won't be re-scheduled |
+
+### Supported Platforms
+
+- Instagram (feed posts)
+- Facebook (pages)
+- TikTok
+- LinkedIn
+- X (Twitter)
+- YouTube
+- Threads
+- Pinterest
+- Bluesky
+
+### Technical Details
+
+**API Endpoints (Serverless Functions):**
+- `/api/late-profiles` - Fetches connected social accounts from Late
+- `/api/late-schedule` - Schedules a post to Late
+- `/api/cleanup-storage` - Cleans up old images (60+ days)
+
+**Why Serverless?**
+- Late API doesn't allow direct browser requests (CORS)
+- API key stays secure on server-side
+- Vercel functions proxy requests to Late
+
+**Image Requirements:**
+- Must be publicly accessible URLs (not base64)
+- Instagram aspect ratio: 0.75 to 1.91 (4:5 portrait to 1.91:1 landscape)
+- Auto-cropping handles non-compliant images
+
+### Troubleshooting Late API
+
+**"Failed to fetch" error:**
+- Check that `VITE_LATE_API_KEY` is set in Vercel
+- Verify API key is valid at getlate.dev
+
+**"Aspect ratio" error:**
+- Re-upload the image (new uploads are auto-cropped)
+- Existing base64 images won't work - must re-upload
+
+**"No profiles found":**
+- Connect social accounts at getlate.dev → Connections
+- Make sure accounts are active (not expired)
+
+**Posts not appearing in Late:**
+- Check Late dashboard → Scheduled posts
+- Verify the scheduled date/time is in the future
+
 ## Development History
 
-### Recent Updates (2025-11-28)
+### Recent Updates (2025-12-01)
+
+1. **Late API Integration** - Schedule posts to Instagram, Facebook, TikTok, etc. via Late API
+2. **Supabase Storage** - Images now stored as public URLs instead of base64
+3. **Auto Image Cropping** - Images automatically cropped to fit Instagram's aspect ratio (0.75 to 1.91)
+4. **Storage Cleanup** - Automatic deletion of images 60 days after posting
+5. **Schedule Posts Button** - New button for agency to schedule all approved posts
+6. **Platform Selection Modal** - Select which platforms to post to with visual icons
+
+### Previous Updates (2025-11-28)
 
 1. **Multi-Client System** - Complete rewrite to support multiple clients with isolated data
 2. **Performance Fixes** - Resolved typing lag with debounced textarea components
@@ -411,14 +537,20 @@ See `DEPLOYMENT.md` for detailed technical documentation of all improvements.
 - `add-meta-integration-schema.sql` - **NEW!** Meta API integration schema
 
 ### Source Code
-- `App.tsx` - Main application with auto-posting logic
+- `App.tsx` - Main application with scheduling logic
 - `types.ts` - TypeScript interfaces including Meta credentials, Gmail settings
 - `services/geminiService.ts` - AI caption generation and feedback processing
 - `services/gmailService.ts` - Gmail OAuth and email sending
-- `src/services/metaService.ts` - Meta API service
+- `services/lateService.ts` - Late API integration for social scheduling
+- `services/storageService.ts` - Supabase Storage upload with auto-cropping
+- `src/services/metaService.ts` - Meta API service (legacy)
 - `src/components/MetaSettings.tsx` - Settings UI for Meta integration
-- `api/post-to-meta.ts` - Vercel serverless function for secure posting
+- `api/late-profiles.ts` - Serverless function to fetch Late accounts
+- `api/late-schedule.ts` - Serverless function to schedule posts via Late
+- `api/cleanup-storage.ts` - Serverless function for storage cleanup
+- `api/post-to-meta.ts` - Vercel serverless function for Meta posting (legacy)
 - `public/oauth/callback/index.html` - Gmail OAuth callback handler
+- `vercel.json` - Vercel configuration with cron jobs
 
 ## Security Notes
 
@@ -520,9 +652,12 @@ See `META-SETUP.md` for complete step-by-step instructions.
 
 Potential features to add:
 - [x] ~~Email notifications when posts are approved~~ ✅ **COMPLETED** - Gmail API integration
-- [x] ~~Social media API integration~~ ✅ **COMPLETED** - Meta Business Suite API
+- [x] ~~Social media API integration~~ ✅ **COMPLETED** - Late API (replaced Meta direct integration)
 - [x] ~~Automated scheduling when status = "Approved"~~ ✅ **COMPLETED**
 - [x] ~~AI Caption Generation~~ ✅ **COMPLETED** - Gemini 2.0 Flash
+- [x] ~~Supabase Storage for images~~ ✅ **COMPLETED** - Public URLs for Late API
+- [x] ~~Auto image cropping for Instagram~~ ✅ **COMPLETED** - Aspect ratio 0.75-1.91
+- [x] ~~Storage cleanup~~ ✅ **COMPLETED** - Auto-delete after 60 days
 - [ ] Refresh token for Gmail (avoid re-auth every hour)
 - [ ] Client-specific branding/themes
 - [ ] Usage analytics per client
@@ -530,7 +665,7 @@ Potential features to add:
 - [ ] Comment threads and @mentions
 - [ ] File attachments beyond images
 - [ ] Mobile app
-- [ ] Supabase Storage for images (required for Meta API)
+- [ ] TikTok/Reels video support
 
 ## License
 
