@@ -2,8 +2,92 @@ import { supabase } from './supabaseClient';
 
 const BUCKET_NAME = 'post-images';
 
+// Instagram aspect ratio requirements
+const MIN_ASPECT_RATIO = 0.75; // 4:5 portrait
+const MAX_ASPECT_RATIO = 1.91; // landscape
+
+/**
+ * Crop image to fit Instagram's aspect ratio requirements (0.75 to 1.91)
+ * Centers the crop on the image
+ */
+const cropImageForInstagram = (file: File | Blob): Promise<Blob> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+
+      const originalWidth = img.width;
+      const originalHeight = img.height;
+      const aspectRatio = originalWidth / originalHeight;
+
+      // Check if cropping is needed
+      if (aspectRatio >= MIN_ASPECT_RATIO && aspectRatio <= MAX_ASPECT_RATIO) {
+        // Already within acceptable range, return original
+        resolve(file);
+        return;
+      }
+
+      let cropWidth = originalWidth;
+      let cropHeight = originalHeight;
+      let offsetX = 0;
+      let offsetY = 0;
+
+      if (aspectRatio < MIN_ASPECT_RATIO) {
+        // Too tall (portrait) - crop height to fit 4:5
+        cropHeight = originalWidth / MIN_ASPECT_RATIO;
+        offsetY = (originalHeight - cropHeight) / 2;
+      } else if (aspectRatio > MAX_ASPECT_RATIO) {
+        // Too wide (landscape) - crop width to fit 1.91:1
+        cropWidth = originalHeight * MAX_ASPECT_RATIO;
+        offsetX = (originalWidth - cropWidth) / 2;
+      }
+
+      // Create canvas and crop
+      const canvas = document.createElement('canvas');
+      canvas.width = cropWidth;
+      canvas.height = cropHeight;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Failed to get canvas context'));
+        return;
+      }
+
+      // Draw cropped image
+      ctx.drawImage(
+        img,
+        offsetX, offsetY, cropWidth, cropHeight, // Source
+        0, 0, cropWidth, cropHeight // Destination
+      );
+
+      // Convert to blob
+      canvas.toBlob(
+        (blob) => {
+          if (blob) {
+            resolve(blob);
+          } else {
+            reject(new Error('Failed to create cropped image'));
+          }
+        },
+        'image/jpeg',
+        0.92 // Quality
+      );
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Failed to load image for cropping'));
+    };
+
+    img.src = url;
+  });
+};
+
 /**
  * Upload an image to Supabase Storage and return the public URL
+ * Automatically crops images to fit Instagram's aspect ratio requirements
  * @param file - File object or base64 data URL
  * @param clientId - Client ID for organizing files
  * @param postId - Post ID for unique filename
@@ -15,7 +99,7 @@ export const uploadImage = async (
   postId: string
 ): Promise<string> => {
   let fileData: Blob;
-  let fileExt: string;
+  let fileExt: string = 'jpg'; // Default to jpg after cropping
 
   if (typeof file === 'string') {
     // Handle base64 data URL
@@ -40,6 +124,15 @@ export const uploadImage = async (
     // Handle File object
     fileData = file;
     fileExt = file.name.split('.').pop() || 'png';
+  }
+
+  // Crop image to fit Instagram's aspect ratio requirements
+  try {
+    fileData = await cropImageForInstagram(fileData);
+    fileExt = 'jpg'; // Cropped images are always jpg
+  } catch (error) {
+    console.warn('Image cropping failed, using original:', error);
+    // Continue with original if cropping fails
   }
 
   // Generate unique filename
