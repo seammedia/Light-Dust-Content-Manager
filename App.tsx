@@ -685,6 +685,7 @@ export default function App() {
     setSchedulingPosts(true);
     let successCount = 0;
     let errorCount = 0;
+    let lastError = '';
 
     try {
       for (const post of approvedPosts) {
@@ -720,6 +721,7 @@ export default function App() {
           await handleUpdatePost(post.id, 'status', 'Posted');
         } catch (error: any) {
           console.error(`Error scheduling post ${post.id}:`, error);
+          lastError = error.message || 'Unknown error';
           errorCount++;
         }
       }
@@ -727,7 +729,7 @@ export default function App() {
       if (successCount > 0) {
         alert(`Successfully scheduled ${successCount} post(s)!${errorCount > 0 ? ` (${errorCount} failed)` : ''}`);
       } else {
-        alert('Failed to schedule posts. Please check your Late API configuration.');
+        alert(`Failed to schedule posts: ${lastError || 'Please check your Late API configuration.'}`);
       }
 
       setShowScheduleModal(false);

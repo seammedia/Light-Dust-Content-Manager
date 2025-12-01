@@ -78,8 +78,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } catch {
         error = { message: responseText };
       }
+      console.error('Late API error details:', error);
       return res.status(response.status).json({
-        error: error.message || error.error || `Late API error: ${response.status}`
+        error: error.message || error.error || error.detail || JSON.stringify(error) || `Late API error: ${response.status}`
       });
     }
 
