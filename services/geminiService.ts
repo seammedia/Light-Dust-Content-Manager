@@ -16,13 +16,19 @@ const getMimeType = (dataUrl: string): string => {
 // Simple caption generation from image for agency use
 export const generateCaptionFromImage = async (
   imageBase64: string,
-  brandName: string
+  brandName: string,
+  clientNotes?: string
 ): Promise<{ caption: string; hashtags: string[] }> => {
   // Check if API key is configured
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error('Gemini API key not configured. Please add VITE_GEMINI_API_KEY to environment variables.');
   }
+
+  // Build client notes section for prompt
+  const clientNotesSection = clientNotes?.trim()
+    ? `\n\nCLIENT-SPECIFIC GUIDELINES (IMPORTANT - follow these closely):\n${clientNotes}`
+    : '';
 
   const genAI = getClient();
   const model = genAI.getGenerativeModel({
@@ -40,6 +46,7 @@ export const generateCaptionFromImage = async (
       - Use emojis sparingly but effectively (1-3 per caption).
       - Include a subtle call to action at the end.
       - Keep the caption concise but engaging (3-5 short paragraphs).
+      ${clientNotesSection}
     `,
     generationConfig: {
       responseMimeType: "application/json",
@@ -126,12 +133,18 @@ export const updateFromFeedback = async (
   currentCaption: string,
   currentHashtags: string[],
   feedback: string,
-  brandName: string
+  brandName: string,
+  clientNotes?: string
 ): Promise<{ caption: string; hashtags: string[] }> => {
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error('Gemini API key not configured.');
   }
+
+  // Build client notes section for prompt
+  const clientNotesSection = clientNotes?.trim()
+    ? `\n\nCLIENT-SPECIFIC GUIDELINES (keep these in mind when updating):\n${clientNotes}`
+    : '';
 
   const genAI = getClient();
   const model = genAI.getGenerativeModel({
@@ -147,6 +160,7 @@ export const updateFromFeedback = async (
       - Only make changes that address the specific feedback.
       - If feedback asks for more hashtags, add relevant ones.
       - If feedback asks for changes to the caption, update it accordingly.
+      ${clientNotesSection}
     `,
     generationConfig: {
       responseMimeType: "application/json",

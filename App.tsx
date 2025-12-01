@@ -3,7 +3,7 @@ import { Post, BrandContext, Client } from './types';
 import { PostEditor } from './components/PostEditor';
 import { MetaSettings } from './src/components/MetaSettings';
 import { supabase } from './services/supabaseClient';
-import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles, Mail, Clock, Send } from 'lucide-react';
+import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles, Mail, Clock, Send, FileText } from 'lucide-react';
 import { generateCaptionFromImage, updateFromFeedback } from './services/geminiService';
 import { isGmailConnected, getConnectedEmail, connectGmail, sendEmail, clearGmailSettings } from './services/gmailService';
 import { isLateConfigured, getProfiles, schedulePost, LateProfile } from './services/lateService';
@@ -381,6 +381,11 @@ export default function App() {
   const [schedulingPosts, setSchedulingPosts] = useState(false);
   const [scheduleTime, setScheduleTime] = useState('10:00');
 
+  // Client Notes state (agency-only)
+  const [showClientNotesModal, setShowClientNotesModal] = useState(false);
+  const [clientNotes, setClientNotes] = useState('');
+  const [savingClientNotes, setSavingClientNotes] = useState(false);
+
   // Debounce timer for database updates
   const debounceTimers = useRef<Record<string, NodeJS.Timeout>>({});
 
@@ -749,6 +754,35 @@ export default function App() {
     );
   };
 
+  // Client Notes handlers
+  const handleOpenClientNotes = () => {
+    setClientNotes(currentClient?.client_notes || '');
+    setShowClientNotesModal(true);
+  };
+
+  const handleSaveClientNotes = async () => {
+    if (!currentClient) return;
+
+    setSavingClientNotes(true);
+    try {
+      const { error } = await supabase
+        .from('clients')
+        .update({ client_notes: clientNotes })
+        .eq('id', currentClient.id);
+
+      if (error) throw error;
+
+      // Update local state
+      setCurrentClient({ ...currentClient, client_notes: clientNotes });
+      setShowClientNotesModal(false);
+    } catch (error: any) {
+      console.error('Error saving client notes:', error);
+      alert('Failed to save client notes. Please try again.');
+    } finally {
+      setSavingClientNotes(false);
+    }
+  };
+
   const handleSendEmail = async () => {
     if (!currentClient || !emailTo) {
       alert('Please enter client email address');
@@ -853,7 +887,7 @@ Heath`;
     setGeneratingCaptionId(post.id);
 
     try {
-      const result = await generateCaptionFromImage(post.imageUrl, currentClient.brand_name);
+      const result = await generateCaptionFromImage(post.imageUrl, currentClient.brand_name, currentClient.client_notes);
 
       // Update caption
       await handleUpdatePost(post.id, 'generatedCaption', result.caption);
@@ -888,7 +922,8 @@ Heath`;
         post.generatedCaption || '',
         post.generatedHashtags || [],
         post.notes,
-        currentClient.brand_name
+        currentClient.brand_name,
+        currentClient.client_notes
       );
 
       // Update caption
@@ -1037,6 +1072,16 @@ Heath`;
             </h1>
           </div>
           <div className="flex items-center gap-3">
+             {isMasterAccount && currentClient && (
+               <button
+                 onClick={handleOpenClientNotes}
+                 className="flex items-center gap-2 text-sm font-medium text-stone-600 hover:text-brand-green px-3 py-2 border border-stone-300 rounded-lg transition-colors"
+                 title="View/edit client notes (agency only)"
+               >
+                 <FileText className="w-4 h-4" />
+                 Client Notes
+               </button>
+             )}
              {isMasterAccount && (
                <button
                  onClick={() => setShowClientSelector(true)}
@@ -1582,6 +1627,60 @@ Heath`}
                     <Mail className="w-4 h-4" />
                     Send Email
                   </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Client Notes Modal (Agency Only) */}
+      {showClientNotesModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowClientNotesModal(false)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <FileText className="w-6 h-6 text-brand-green" />
+              <h2 className="text-xl font-serif font-bold text-brand-dark">Client Notes</h2>
+              <span className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-full font-medium">Agency Only</span>
+            </div>
+
+            <p className="text-sm text-stone-500 mb-4">
+              These notes are private and only visible to agency staff. They will be used to guide AI caption generation.
+            </p>
+
+            <textarea
+              value={clientNotes}
+              onChange={(e) => setClientNotes(e.target.value)}
+              placeholder="Add notes about this client's preferences, brand voice, things to avoid, common feedback, etc.
+
+Example:
+- Always mention their location (Sydney)
+- Avoid using the word 'cheap' - use 'affordable' instead
+- They prefer shorter captions (2-3 sentences max)
+- Include a call-to-action in every post
+- Their target audience is young professionals (25-35)"
+              className="w-full h-64 px-4 py-3 border border-stone-300 rounded-lg focus:ring-2 focus:ring-brand-green focus:border-brand-green outline-none resize-none text-sm"
+            />
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowClientNotesModal(false)}
+                className="flex-1 px-4 py-2 border border-stone-300 rounded-lg text-stone-700 hover:bg-stone-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveClientNotes}
+                disabled={savingClientNotes}
+                className="flex-1 px-4 py-2 bg-brand-green text-white rounded-lg hover:bg-emerald-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {savingClientNotes ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  'Save Notes'
                 )}
               </button>
             </div>

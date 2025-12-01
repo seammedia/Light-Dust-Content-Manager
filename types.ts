@@ -6,6 +6,7 @@ export interface Client {
   brand_mission?: string;
   brand_tone?: string;
   brand_keywords?: string[];
+  client_notes?: string; // Agency-only notes about the client
   contact_name?: string;
   contact_email?: string;
   meta_page_id?: string;
