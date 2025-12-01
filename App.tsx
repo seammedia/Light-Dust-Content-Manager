@@ -1219,7 +1219,7 @@ Heath`;
                       title="Schedule approved posts to social media"
                     >
                       <Clock className="w-4 h-4" />
-                      Schedule Posts
+                      Schedule
                     </button>
                   )}
                   {isMasterAccount && currentClient && (
@@ -1252,7 +1252,7 @@ Heath`
                       className="bg-stone-100 hover:bg-stone-200 text-stone-700 px-4 py-2 rounded-lg font-medium text-sm transition-all shadow-sm border border-stone-300 flex items-center gap-2"
                     >
                       <Mail className="w-4 h-4" />
-                      Email Client
+                      Email
                       {gmailConnected && <span className="w-2 h-2 bg-green-500 rounded-full"></span>}
                     </button>
                   )}
