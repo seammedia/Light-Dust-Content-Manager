@@ -7,6 +7,7 @@ import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, Re
 import { generateCaptionFromImage, updateFromFeedback } from './services/geminiService';
 import { isGmailConnected, getConnectedEmail, connectGmail, sendEmail, clearGmailSettings } from './services/gmailService';
 import { isLateConfigured, getProfiles, schedulePost, LateProfile } from './services/lateService';
+import { uploadImage } from './services/storageService';
 
 // Debounced Textarea Component - prevents typing lag
 function DebouncedTextarea({
@@ -365,6 +366,7 @@ export default function App() {
   const [selectedMonth, setSelectedMonth] = useState<Date>(new Date());
   const [generatingCaptionId, setGeneratingCaptionId] = useState<string | null>(null);
   const [updatingFromFeedbackId, setUpdatingFromFeedbackId] = useState<string | null>(null);
+  const [uploadingImageId, setUploadingImageId] = useState<string | null>(null);
   const [gmailConnected, setGmailConnected] = useState(isGmailConnected());
   const [gmailEmail, setGmailEmail] = useState(getConnectedEmail());
   const [sendingEmail, setSendingEmail] = useState(false);
@@ -807,23 +809,29 @@ Heath`;
     }
   };
 
-  const handleImageChange = (id: string, e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = async (id: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      // 2MB limit to prevent heavy payload errors
-      if (file.size > 2 * 1024 * 1024) {
-          alert("Image is too large. Please use an image under 2MB.");
-          return;
-      }
+    if (!file || !currentClient) return;
 
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        handleUpdatePost(id, 'imageUrl', reader.result as string);
-      };
-      reader.onerror = () => {
-          alert("Failed to read image file.");
-      };
-      reader.readAsDataURL(file);
+    // 10MB limit for Supabase Storage
+    if (file.size > 10 * 1024 * 1024) {
+      alert("Image is too large. Please use an image under 10MB.");
+      return;
+    }
+
+    setUploadingImageId(id);
+
+    try {
+      // Upload to Supabase Storage and get public URL
+      const publicUrl = await uploadImage(file, currentClient.id, id);
+
+      // Save the public URL to the database
+      await handleUpdatePost(id, 'imageUrl', publicUrl);
+    } catch (error: any) {
+      console.error('Image upload error:', error);
+      alert(error.message || 'Failed to upload image. Please try again.');
+    } finally {
+      setUploadingImageId(null);
     }
   };
 
@@ -1271,6 +1279,14 @@ Heath`
                                         {post.status === 'Posted' && (
                                             <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white font-medium text-sm z-30 pointer-events-none">
                                                 POSTED
+                                            </div>
+                                        )}
+
+                                        {/* Upload Loading Overlay */}
+                                        {uploadingImageId === post.id && (
+                                            <div className="absolute inset-0 bg-white/80 flex flex-col items-center justify-center z-40">
+                                                <Loader2 className="w-8 h-8 animate-spin text-brand-green mb-2" />
+                                                <span className="text-xs font-medium text-stone-600">Uploading...</span>
                                             </div>
                                         )}
                                     </div>
