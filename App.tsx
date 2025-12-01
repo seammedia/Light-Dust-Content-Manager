@@ -772,8 +772,15 @@ export default function App() {
 
       if (error) throw error;
 
-      // Update local state
-      setCurrentClient({ ...currentClient, client_notes: clientNotes });
+      // Update current client state
+      const updatedClient = { ...currentClient, client_notes: clientNotes };
+      setCurrentClient(updatedClient);
+
+      // Also update in allClients array so notes persist when switching clients
+      if (isMasterAccount) {
+        setAllClients(allClients.map(c => c.id === currentClient.id ? updatedClient : c));
+      }
+
       setShowClientNotesModal(false);
     } catch (error: any) {
       console.error('Error saving client notes:', error);
