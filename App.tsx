@@ -288,16 +288,36 @@ function CalendarView({ posts, selectedMonth }: { posts: Post[], selectedMonth: 
               <div key={day} className="border border-stone-200 rounded min-h-[100px] p-2 hover:bg-stone-50 transition-colors">
                 <div className="text-sm font-semibold text-stone-700 mb-1">{day}</div>
                 <div className="space-y-1">
-                  {dayPosts.map(post => (
-                    <div
-                      key={post.id}
-                      onClick={() => setSelectedPost(post)}
-                      className="text-xs px-2 py-1 rounded cursor-pointer bg-pink-100 text-pink-800 hover:bg-pink-200 transition-colors truncate"
-                      title={post.title}
-                    >
-                      {post.title || 'Untitled Post'}
-                    </div>
-                  ))}
+                  {dayPosts.map(post => {
+                    // Get caption snippet (first 40 chars)
+                    const captionSnippet = post.generatedCaption
+                      ? post.generatedCaption.substring(0, 40) + (post.generatedCaption.length > 40 ? '...' : '')
+                      : post.title || 'Untitled Post';
+
+                    return (
+                      <div
+                        key={post.id}
+                        onClick={() => setSelectedPost(post)}
+                        className="flex items-start gap-1.5 text-xs p-1.5 rounded cursor-pointer bg-pink-100 text-pink-800 hover:bg-pink-200 transition-colors"
+                        title={post.generatedCaption || post.title}
+                      >
+                        {/* Thumbnail */}
+                        {post.imageUrl ? (
+                          <img
+                            src={post.imageUrl}
+                            alt=""
+                            className="w-8 h-8 object-cover rounded flex-shrink-0"
+                          />
+                        ) : (
+                          <div className="w-8 h-8 bg-pink-200 rounded flex-shrink-0 flex items-center justify-center">
+                            <span className="text-[10px] text-pink-400">No img</span>
+                          </div>
+                        )}
+                        {/* Caption snippet */}
+                        <span className="line-clamp-2 leading-tight">{captionSnippet}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             );
