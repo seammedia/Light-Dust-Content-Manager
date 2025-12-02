@@ -213,6 +213,60 @@ function PostDetailModal({ post, onClose }: { post: Post, onClose: () => void })
   );
 }
 
+// Australian Public Holidays
+const getAustralianHolidays = (year: number): Record<string, string> => {
+  const holidays: Record<string, string> = {};
+
+  // Fixed national holidays
+  holidays[`${year}-01-01`] = "New Year's Day";
+  holidays[`${year}-01-26`] = "Australia Day";
+  holidays[`${year}-04-25`] = "Anzac Day";
+  holidays[`${year}-12-25`] = "Christmas Day";
+  holidays[`${year}-12-26`] = "Boxing Day";
+
+  // Easter (calculated) - using anonymous function to calculate Easter Sunday
+  const calculateEaster = (y: number) => {
+    const a = y % 19;
+    const b = Math.floor(y / 100);
+    const c = y % 100;
+    const d = Math.floor(b / 4);
+    const e = b % 4;
+    const f = Math.floor((b + 8) / 25);
+    const g = Math.floor((b - f + 1) / 3);
+    const h = (19 * a + b - d - g + 15) % 30;
+    const i = Math.floor(c / 4);
+    const k = c % 4;
+    const l = (32 + 2 * e + 2 * i - h - k) % 7;
+    const m = Math.floor((a + 11 * h + 22 * l) / 451);
+    const month = Math.floor((h + l - 7 * m + 114) / 31);
+    const day = ((h + l - 7 * m + 114) % 31) + 1;
+    return new Date(y, month - 1, day);
+  };
+
+  const easterSunday = calculateEaster(year);
+  const goodFriday = new Date(easterSunday);
+  goodFriday.setDate(easterSunday.getDate() - 2);
+  const easterMonday = new Date(easterSunday);
+  easterMonday.setDate(easterSunday.getDate() + 1);
+
+  const formatDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  holidays[formatDate(goodFriday)] = "Good Friday";
+  holidays[formatDate(easterMonday)] = "Easter Monday";
+
+  // Australia Day observed (if Jan 26 falls on weekend)
+  const ausDay = new Date(year, 0, 26);
+  if (ausDay.getDay() === 0) holidays[`${year}-01-27`] = "Australia Day (observed)";
+  if (ausDay.getDay() === 6) holidays[`${year}-01-28`] = "Australia Day (observed)";
+
+  // Queen's/King's Birthday - second Monday of June (most states)
+  const junFirst = new Date(year, 5, 1);
+  const firstMondayOffset = (8 - junFirst.getDay()) % 7;
+  const secondMonday = 1 + firstMondayOffset + 7;
+  holidays[`${year}-06-${String(secondMonday).padStart(2, '0')}`] = "King's Birthday";
+
+  return holidays;
+};
+
 // Calendar View Component
 function CalendarView({ posts, selectedMonth }: { posts: Post[], selectedMonth: Date }) {
   const [currentMonth, setCurrentMonth] = useState(selectedMonth);
@@ -235,10 +289,16 @@ function CalendarView({ posts, selectedMonth }: { posts: Post[], selectedMonth: 
   };
 
   const { daysInMonth, startingDayOfWeek, year, month } = getDaysInMonth(currentMonth);
+  const holidays = getAustralianHolidays(year);
 
   const getPostsForDate = (day: number) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     return posts.filter(post => post.date === dateStr);
+  };
+
+  const getHolidayForDate = (day: number) => {
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    return holidays[dateStr] || null;
   };
 
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -288,10 +348,18 @@ function CalendarView({ posts, selectedMonth }: { posts: Post[], selectedMonth: 
           {Array.from({ length: daysInMonth }).map((_, i) => {
             const day = i + 1;
             const dayPosts = getPostsForDate(day);
+            const holiday = getHolidayForDate(day);
 
             return (
-              <div key={day} className="border border-stone-200 rounded min-h-[100px] p-2 hover:bg-stone-50 transition-colors">
-                <div className="text-sm font-semibold text-stone-700 mb-1">{day}</div>
+              <div key={day} className={`border rounded min-h-[100px] p-2 hover:bg-stone-50 transition-colors ${holiday ? 'border-red-200 bg-red-50/30' : 'border-stone-200'}`}>
+                <div className="flex items-center gap-1 mb-1">
+                  <span className={`text-sm font-semibold ${holiday ? 'text-red-700' : 'text-stone-700'}`}>{day}</span>
+                  {holiday && (
+                    <span className="text-[10px] text-red-600 font-medium truncate" title={holiday}>
+                      {holiday}
+                    </span>
+                  )}
+                </div>
                 <div className="space-y-1">
                   {dayPosts.map(post => {
                     // Get caption snippet (first 40 chars)
