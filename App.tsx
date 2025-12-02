@@ -126,82 +126,87 @@ function DebouncedInput({
 function PostDetailModal({ post, onClose }: { post: Post, onClose: () => void }) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="p-6">
-          {/* Header */}
-          <div className="flex items-start justify-between mb-6">
-            <div>
-              <h2 className="text-2xl font-serif font-bold text-brand-dark mb-2">{post.title || 'Untitled Post'}</h2>
-              <p className="text-sm text-stone-500">
-                {post.date ? (() => {
-                  const [year, month, day] = post.date.split('-');
-                  return `${day}/${month}/${year}`;
-                })() : 'No date'}
-              </p>
+      <div className="bg-white rounded-xl shadow-2xl max-w-5xl w-full" onClick={(e) => e.stopPropagation()}>
+        {/* Close button */}
+        <button onClick={onClose} className="absolute top-4 right-4 text-stone-400 hover:text-stone-600 transition-colors z-10">
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+
+        <div className="flex">
+          {/* Left side - Image */}
+          <div className="w-1/2 flex-shrink-0">
+            {post.imageUrl ? (
+              <img src={post.imageUrl} alt="Post" className="w-full h-full object-cover rounded-l-xl" />
+            ) : (
+              <div className="w-full h-full min-h-[400px] bg-stone-100 rounded-l-xl flex items-center justify-center">
+                <span className="text-stone-400">No image</span>
+              </div>
+            )}
+          </div>
+
+          {/* Right side - Content */}
+          <div className="w-1/2 p-6 flex flex-col">
+            {/* Header */}
+            <div className="mb-4">
+              <div className="flex items-center gap-3 mb-2">
+                <span className={`inline-block px-3 py-1 rounded text-xs font-bold uppercase ${
+                  post.status === 'Posted' ? 'bg-stone-800 text-white' :
+                  post.status === 'Approved' ? 'bg-brand-green text-white' :
+                  post.status === 'For Approval' ? 'bg-amber-100 text-amber-800' :
+                  'bg-stone-100 text-stone-600'
+                }`}>
+                  {post.status}
+                </span>
+                <p className="text-sm text-stone-500">
+                  {post.date ? (() => {
+                    const [year, month, day] = post.date.split('-');
+                    return `${day}/${month}/${year}`;
+                  })() : 'No date'}
+                </p>
+              </div>
+              <h2 className="text-xl font-serif font-bold text-brand-dark">{post.title || 'Untitled Post'}</h2>
             </div>
-            <button onClick={onClose} className="text-stone-400 hover:text-stone-600 transition-colors">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
+
+            {/* Caption */}
+            {post.generatedCaption && (
+              <div className="mb-4 flex-1">
+                <h3 className="text-xs font-bold text-stone-500 uppercase tracking-wide mb-2">Caption</h3>
+                <p className="text-sm text-stone-700 leading-relaxed whitespace-pre-wrap">{post.generatedCaption}</p>
+              </div>
+            )}
+
+            {/* Hashtags */}
+            {post.generatedHashtags && post.generatedHashtags.length > 0 && (
+              <div className="mb-4">
+                <h3 className="text-xs font-bold text-stone-500 uppercase tracking-wide mb-2">Hashtags</h3>
+                <div className="flex flex-wrap gap-1.5">
+                  {post.generatedHashtags.map((tag, idx) => (
+                    <span key={idx} className="text-xs text-brand-green bg-brand-green/10 px-2 py-1 rounded">
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Notes */}
+            {post.notes && (
+              <div className="mb-4">
+                <h3 className="text-xs font-bold text-stone-500 uppercase tracking-wide mb-2">Notes</h3>
+                <p className="text-sm text-stone-600 leading-relaxed whitespace-pre-wrap bg-stone-50 p-3 rounded-lg">{post.notes}</p>
+              </div>
+            )}
+
+            {/* Close Button */}
+            <button
+              onClick={onClose}
+              className="w-full bg-brand-dark text-white py-2.5 rounded-lg hover:bg-black transition-all font-medium mt-auto"
+            >
+              Close
             </button>
           </div>
-
-          {/* Image */}
-          {post.imageUrl && (
-            <div className="mb-6">
-              <img src={post.imageUrl} alt="Post" className="w-full rounded-lg shadow-md" />
-            </div>
-          )}
-
-          {/* Status */}
-          <div className="mb-4">
-            <span className={`inline-block px-3 py-1 rounded text-sm font-bold uppercase ${
-              post.status === 'Posted' ? 'bg-stone-800 text-white' :
-              post.status === 'Approved' ? 'bg-brand-green text-white' :
-              post.status === 'For Approval' ? 'bg-amber-100 text-amber-800' :
-              'bg-stone-100 text-stone-600'
-            }`}>
-              {post.status}
-            </span>
-          </div>
-
-          {/* Caption */}
-          {post.generatedCaption && (
-            <div className="mb-4">
-              <h3 className="text-sm font-bold text-stone-700 mb-2">Caption</h3>
-              <p className="text-sm text-stone-600 leading-relaxed whitespace-pre-wrap">{post.generatedCaption}</p>
-            </div>
-          )}
-
-          {/* Hashtags */}
-          {post.generatedHashtags && post.generatedHashtags.length > 0 && (
-            <div className="mb-4">
-              <h3 className="text-sm font-bold text-stone-700 mb-2">Hashtags</h3>
-              <div className="flex flex-wrap gap-2">
-                {post.generatedHashtags.map((tag, idx) => (
-                  <span key={idx} className="text-xs text-brand-green bg-brand-green/5 px-2 py-1 rounded border border-brand-green/10">
-                    #{tag}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Notes */}
-          {post.notes && (
-            <div className="mb-4">
-              <h3 className="text-sm font-bold text-stone-700 mb-2">Notes</h3>
-              <p className="text-sm text-stone-600 leading-relaxed whitespace-pre-wrap">{post.notes}</p>
-            </div>
-          )}
-
-          {/* Close Button */}
-          <button
-            onClick={onClose}
-            className="w-full bg-brand-dark text-white py-3 rounded-lg hover:bg-black transition-all font-medium mt-6"
-          >
-            Close
-          </button>
         </div>
       </div>
     </div>
