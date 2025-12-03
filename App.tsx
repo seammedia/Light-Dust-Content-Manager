@@ -465,6 +465,8 @@ export default function App() {
   const [sendingEmail, setSendingEmail] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [emailTo, setEmailTo] = useState('');
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailBody, setEmailBody] = useState('');
 
   // Schedule Posts state
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -957,24 +959,19 @@ export default function App() {
       return;
     }
 
+    if (!emailSubject.trim()) {
+      alert('Please enter an email subject');
+      return;
+    }
+
+    if (!emailBody.trim()) {
+      alert('Please enter an email message');
+      return;
+    }
+
     setSendingEmail(true);
 
-    const dashboardUrl = window.location.origin;
-    const contactName = currentClient.contact_name || currentClient.name;
-    const subject = 'Your Social Calendar is Ready for Review';
-    const body = `Hi ${contactName},
-
-Your social calendar is ready for review.
-
-Please visit the link below to view and approve your upcoming posts:
-${dashboardUrl}
-
-If you have any feedback or changes, please add them in the comments section for each post.
-
-Thanks,
-Heath`;
-
-    const result = await sendEmail(emailTo, subject, body);
+    const result = await sendEmail(emailTo, emailSubject, emailBody);
 
     setSendingEmail(false);
 
@@ -982,6 +979,8 @@ Heath`;
       alert(`Email sent successfully to ${emailTo}!`);
       setShowEmailModal(false);
       setEmailTo('');
+      setEmailSubject('');
+      setEmailBody('');
 
       // Save the email to the client record for future use
       if (currentClient && emailTo !== currentClient.contact_email) {
@@ -1450,7 +1449,21 @@ Heath`;
                     <button
                       onClick={() => {
                         if (gmailConnected) {
+                          const contactName = currentClient.contact_name || currentClient.name;
+                          const dashboardUrl = window.location.origin;
                           setEmailTo(currentClient.contact_email || '');
+                          setEmailSubject('Your Social Calendar is Ready for Review');
+                          setEmailBody(`Hi ${contactName},
+
+Your social calendar is ready for review.
+
+Please visit the link below to view and approve your upcoming posts:
+${dashboardUrl}
+
+If you have any feedback or changes, please add them in the comments section for each post.
+
+Thanks,
+Heath`);
                           setShowEmailModal(true);
                         } else {
                           // Fallback to mailto if Gmail not connected
@@ -1806,26 +1819,23 @@ Heath`
 
               <div>
                 <label className="block text-sm font-medium text-stone-700 mb-1">Subject:</label>
-                <p className="text-sm text-stone-600 bg-stone-50 px-3 py-2 rounded-lg">
-                  Your Social Calendar is Ready for Review
-                </p>
+                <input
+                  type="text"
+                  value={emailSubject}
+                  onChange={(e) => setEmailSubject(e.target.value)}
+                  placeholder="Email subject"
+                  className="w-full px-3 py-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-brand-green focus:border-brand-green outline-none"
+                />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">Message Preview:</label>
-                <div className="text-sm text-stone-600 bg-stone-50 px-3 py-2 rounded-lg whitespace-pre-wrap max-h-40 overflow-y-auto">
-{`Hi ${currentClient.contact_name || currentClient.name},
-
-Your social calendar is ready for review.
-
-Please visit the link below to view and approve your upcoming posts:
-${window.location.origin}
-
-If you have any feedback or changes, please add them in the comments section for each post.
-
-Thanks,
-Heath`}
-                </div>
+                <label className="block text-sm font-medium text-stone-700 mb-1">Message:</label>
+                <textarea
+                  value={emailBody}
+                  onChange={(e) => setEmailBody(e.target.value)}
+                  placeholder="Enter your email message..."
+                  className="w-full h-48 px-3 py-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-brand-green focus:border-brand-green outline-none resize-none text-sm"
+                />
               </div>
 
               {/* Edit client contact info */}
@@ -1845,7 +1855,7 @@ Heath`}
               </button>
               <button
                 onClick={handleSendEmail}
-                disabled={sendingEmail || !emailTo}
+                disabled={sendingEmail || !emailTo || !emailSubject.trim() || !emailBody.trim()}
                 className="flex-1 px-4 py-2 bg-brand-green text-white rounded-lg hover:bg-emerald-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {sendingEmail ? (
