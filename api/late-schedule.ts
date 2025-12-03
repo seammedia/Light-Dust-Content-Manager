@@ -35,6 +35,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Missing required fields: platforms, content, scheduledFor' });
     }
 
+    // Check if Instagram is in the platforms and validate media is provided
+    const hasInstagram = platforms.some(p => p.platform === 'instagram');
+    const hasValidMedia = mediaUrls && mediaUrls.length > 0 && mediaUrls.some(url => url && !url.startsWith('data:'));
+
+    if (hasInstagram && !hasValidMedia) {
+      return res.status(400).json({ error: 'Instagram posts require media content (images or videos)' });
+    }
+
     // Build the request body according to Late API spec
     const requestBody: any = {
       platforms,
