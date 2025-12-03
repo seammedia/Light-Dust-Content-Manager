@@ -774,7 +774,27 @@ export default function App() {
       return;
     }
 
-    const approvedPosts = filteredPosts.filter(p => p.status === 'Approved');
+    // Check if Instagram is selected
+    const hasInstagram = selectedProfiles.some(profileId => {
+      const profile = lateProfiles.find(p => p.id === profileId);
+      return profile?.platform === 'instagram';
+    });
+
+    // Filter approved posts, and if Instagram is selected, require images
+    let approvedPosts = filteredPosts.filter(p => p.status === 'Approved');
+
+    if (hasInstagram) {
+      const postsWithoutImages = approvedPosts.filter(p => !p.imageUrl);
+      if (postsWithoutImages.length > 0) {
+        approvedPosts = approvedPosts.filter(p => p.imageUrl);
+        if (approvedPosts.length === 0) {
+          alert('Instagram posts require images. Please upload images to the approved posts first.');
+          return;
+        }
+        alert(`Note: ${postsWithoutImages.length} post(s) without images will be skipped (Instagram requires images).`);
+      }
+    }
+
     if (approvedPosts.length === 0) {
       alert('No approved posts to schedule. Please approve posts first.');
       return;
@@ -1798,7 +1818,21 @@ Example:
             </div>
 
             <div className="mb-4 text-sm text-stone-600">
-              <p>Schedule <span className="font-bold text-blue-600">{filteredPosts.filter(p => p.status === 'Approved').length}</span> approved posts to your connected social media accounts.</p>
+              {(() => {
+                const approved = filteredPosts.filter(p => p.status === 'Approved');
+                const withImages = approved.filter(p => p.imageUrl);
+                const withoutImages = approved.length - withImages.length;
+                return (
+                  <>
+                    <p>Schedule <span className="font-bold text-blue-600">{approved.length}</span> approved posts to your connected social media accounts.</p>
+                    {withoutImages > 0 && (
+                      <p className="text-amber-600 mt-1">
+                        ⚠️ {withoutImages} post(s) have no images and will be skipped for Instagram.
+                      </p>
+                    )}
+                  </>
+                );
+              })()}
             </div>
 
             {/* Post Time Selection */}
@@ -1876,10 +1910,17 @@ Example:
             {/* Summary */}
             {lateProfiles.length > 0 && (
               <div className="mb-4 bg-blue-50 rounded-lg p-3 text-sm">
-                <p className="text-blue-800">
-                  <span className="font-bold">{filteredPosts.filter(p => p.status === 'Approved').length}</span> posts will be scheduled to{' '}
-                  <span className="font-bold">{selectedProfiles.length}</span> platform(s)
-                </p>
+                {(() => {
+                  const approved = filteredPosts.filter(p => p.status === 'Approved');
+                  const hasInstagram = selectedProfiles.some(id => lateProfiles.find(p => p.id === id)?.platform === 'instagram');
+                  const schedulablePosts = hasInstagram ? approved.filter(p => p.imageUrl).length : approved.length;
+                  return (
+                    <p className="text-blue-800">
+                      <span className="font-bold">{schedulablePosts}</span> post(s) will be scheduled to{' '}
+                      <span className="font-bold">{selectedProfiles.length}</span> platform(s)
+                    </p>
+                  );
+                })()}
               </div>
             )}
 
