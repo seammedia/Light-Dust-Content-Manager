@@ -3,7 +3,7 @@ import { Post, BrandContext, Client } from './types';
 import { PostEditor } from './components/PostEditor';
 import { MetaSettings } from './src/components/MetaSettings';
 import { supabase } from './services/supabaseClient';
-import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles, Mail, Clock, Send, FileText } from 'lucide-react';
+import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles, Mail, Clock, Send, FileText, Image, X } from 'lucide-react';
 import { generateCaptionFromImage, updateFromFeedback, generateImageFromFeedback } from './services/geminiService';
 import { isGmailConnected, getConnectedEmail, connectGmail, sendEmail, clearGmailSettings } from './services/gmailService';
 import { isLateConfigured, getProfiles, schedulePost, LateProfile } from './services/lateService';
@@ -477,6 +477,8 @@ export default function App() {
   // Client Notes state (agency-only)
   const [showClientNotesModal, setShowClientNotesModal] = useState(false);
   const [clientNotes, setClientNotes] = useState('');
+  const [referenceImages, setReferenceImages] = useState<string[]>([]);
+  const [uploadingReferenceImage, setUploadingReferenceImage] = useState(false);
   const [savingClientNotes, setSavingClientNotes] = useState(false);
 
   // Debounce timer for database updates
@@ -877,6 +879,7 @@ export default function App() {
   // Client Notes handlers
   const handleOpenClientNotes = () => {
     setClientNotes(currentClient?.client_notes || '');
+    setReferenceImages(currentClient?.reference_images || []);
     setShowClientNotesModal(true);
   };
 
@@ -887,13 +890,16 @@ export default function App() {
     try {
       const { error } = await supabase
         .from('clients')
-        .update({ client_notes: clientNotes })
+        .update({
+          client_notes: clientNotes,
+          reference_images: referenceImages
+        })
         .eq('id', currentClient.id);
 
       if (error) throw error;
 
       // Update current client state
-      const updatedClient = { ...currentClient, client_notes: clientNotes };
+      const updatedClient = { ...currentClient, client_notes: clientNotes, reference_images: referenceImages };
       setCurrentClient(updatedClient);
 
       // Also update in allClients array so notes persist when switching clients
@@ -908,6 +914,41 @@ export default function App() {
     } finally {
       setSavingClientNotes(false);
     }
+  };
+
+  const handleReferenceImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0 || !currentClient) return;
+
+    const file = e.target.files[0];
+    setUploadingReferenceImage(true);
+
+    try {
+      // Convert file to base64 data URL for upload
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const dataUrl = reader.result as string;
+        // Upload using the storage service (use 'reference' as postId for reference images)
+        const uploadedUrl = await uploadImage(dataUrl, currentClient.id, `reference-${Date.now()}`);
+        setReferenceImages([...referenceImages, uploadedUrl]);
+        setUploadingReferenceImage(false);
+      };
+      reader.onerror = () => {
+        alert('Failed to read file');
+        setUploadingReferenceImage(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (error: any) {
+      console.error('Error uploading reference image:', error);
+      alert('Failed to upload image. Please try again.');
+      setUploadingReferenceImage(false);
+    }
+
+    // Reset input
+    e.target.value = '';
+  };
+
+  const handleRemoveReferenceImage = (indexToRemove: number) => {
+    setReferenceImages(referenceImages.filter((_, index) => index !== indexToRemove));
   };
 
   const handleSendEmail = async () => {
@@ -1062,7 +1103,8 @@ Heath`;
           const imageResult = await generateImageFromFeedback(
             post.imageUrl || null,
             post.notes,
-            brandContext
+            brandContext,
+            currentClient.reference_images // Pass reference images for style matching
           );
 
           // Convert base64 to data URL and upload
@@ -1825,8 +1867,8 @@ Heath`}
 
       {/* Client Notes Modal (Agency Only) */}
       {showClientNotesModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowClientNotesModal(false)}>
-          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto" onClick={() => setShowClientNotesModal(false)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-6 my-8" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-4">
               <FileText className="w-6 h-6 text-brand-green" />
               <h2 className="text-xl font-serif font-bold text-brand-dark">Client Notes</h2>
@@ -1834,7 +1876,7 @@ Heath`}
             </div>
 
             <p className="text-sm text-stone-500 mb-4">
-              These notes are private and only visible to agency staff. They will be used to guide AI caption generation.
+              These notes are private and only visible to agency staff. They will be used to guide AI caption and image generation.
             </p>
 
             <textarea
@@ -1848,8 +1890,66 @@ Example:
 - They prefer shorter captions (2-3 sentences max)
 - Include a call-to-action in every post
 - Their target audience is young professionals (25-35)"
-              className="w-full h-64 px-4 py-3 border border-stone-300 rounded-lg focus:ring-2 focus:ring-brand-green focus:border-brand-green outline-none resize-none text-sm"
+              className="w-full h-48 px-4 py-3 border border-stone-300 rounded-lg focus:ring-2 focus:ring-brand-green focus:border-brand-green outline-none resize-none text-sm"
             />
+
+            {/* Reference Images Section */}
+            <div className="mt-6 pt-6 border-t border-stone-200">
+              <div className="flex items-center gap-2 mb-3">
+                <Image className="w-5 h-5 text-brand-green" />
+                <h3 className="font-medium text-stone-800">Brand Reference Images</h3>
+              </div>
+              <p className="text-sm text-stone-500 mb-4">
+                Upload reference images to guide AI image generation. These help match the client's existing brand style and aesthetic.
+              </p>
+
+              {/* Reference Images Grid */}
+              {referenceImages.length > 0 && (
+                <div className="grid grid-cols-4 gap-3 mb-4">
+                  {referenceImages.map((url, index) => (
+                    <div key={index} className="relative group aspect-square rounded-lg overflow-hidden border border-stone-200">
+                      <img
+                        src={url}
+                        alt={`Reference ${index + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                      <button
+                        onClick={() => handleRemoveReferenceImage(index)}
+                        className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                        title="Remove image"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Upload Button */}
+              <label className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-stone-300 rounded-lg cursor-pointer hover:border-brand-green hover:bg-stone-50 transition-colors">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleReferenceImageUpload}
+                  disabled={uploadingReferenceImage}
+                  className="hidden"
+                />
+                {uploadingReferenceImage ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-stone-500" />
+                    <span className="text-sm text-stone-500">Uploading...</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4 text-stone-500" />
+                    <span className="text-sm text-stone-500">Add Reference Image</span>
+                  </>
+                )}
+              </label>
+              <p className="text-xs text-stone-400 mt-2">
+                Tip: Upload images that represent the brand's visual style, color palette, or aesthetic preferences.
+              </p>
+            </div>
 
             <div className="flex gap-3 mt-6">
               <button

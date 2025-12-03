@@ -332,7 +332,8 @@ export const generatePostContent = async (
 export const generateImageFromFeedback = async (
   currentImageSource: string | null,
   feedback: string,
-  brandContext?: string
+  brandContext?: string,
+  referenceImages?: string[]
 ): Promise<{ imageBase64: string; mimeType: string }> => {
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
   if (!apiKey) {
@@ -342,17 +343,21 @@ export const generateImageFromFeedback = async (
   const client = getGenAIClient();
 
   // Build the prompt based on whether we're editing or generating new
+  const hasReferenceImages = referenceImages && referenceImages.length > 0;
   let prompt: string;
+
   if (currentImageSource) {
     prompt = `Edit this image based on the following feedback: "${feedback}"
 
 ${brandContext ? `Brand context: ${brandContext}` : ''}
+${hasReferenceImages ? `\nIMPORTANT: Use the provided reference images as style guides. Match their visual aesthetic, color palette, lighting, and overall brand feel.` : ''}
 
 Important: Make the requested changes while maintaining high quality and professional appearance suitable for social media marketing.`;
   } else {
     prompt = `Generate a new image based on this description: "${feedback}"
 
 ${brandContext ? `Brand context: ${brandContext}` : ''}
+${hasReferenceImages ? `\nIMPORTANT: Use the provided reference images as style guides. Match their visual aesthetic, color palette, lighting, and overall brand feel.` : ''}
 
 Important: Create a high-quality, professional image suitable for social media marketing.`;
   }
@@ -366,6 +371,24 @@ Important: Create a high-quality, professional image suitable for social media m
 
       // Build contents array
       const contents: any[] = [];
+
+      // Add reference images first (up to 8 for Nano Banana Pro)
+      if (hasReferenceImages) {
+        const imagesToInclude = referenceImages!.slice(0, 8); // Limit to 8 reference images
+        for (const refImageUrl of imagesToInclude) {
+          try {
+            const refImageData = await fetchImageAsBase64(refImageUrl);
+            contents.push({
+              inlineData: {
+                mimeType: refImageData.mimeType,
+                data: refImageData.base64,
+              },
+            });
+          } catch (refError) {
+            console.warn(`Failed to load reference image: ${refImageUrl}`, refError);
+          }
+        }
+      }
 
       if (currentImageSource) {
         // If editing an existing image, include it

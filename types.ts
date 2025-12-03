@@ -7,6 +7,7 @@ export interface Client {
   brand_tone?: string;
   brand_keywords?: string[];
   client_notes?: string; // Agency-only notes about the client
+  reference_images?: string[]; // URLs of brand reference images for AI image generation
   contact_name?: string;
   contact_email?: string;
   meta_page_id?: string;
