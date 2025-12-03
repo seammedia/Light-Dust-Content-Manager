@@ -19,11 +19,14 @@ interface PostWithNotes {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Check for test mode (bypasses 20-min delay)
+  const isTestMode = req.query.test === 'true';
+
   // Verify this is a cron job request (Vercel adds this header)
   const authHeader = req.headers.authorization;
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    // Also allow manual trigger for testing
-    if (req.method !== 'POST' || req.headers['x-manual-trigger'] !== 'true') {
+    // Also allow manual trigger for testing with secret
+    if (req.query.secret !== process.env.CRON_SECRET) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
   }
@@ -38,9 +41,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Find posts with notes that haven't been notified yet
     // Only get notes updated more than 20 minutes ago (to allow batching)
+    // In test mode, skip the time filter
     const twentyMinutesAgo = new Date(Date.now() - 20 * 60 * 1000).toISOString();
 
-    const { data: posts, error: postsError } = await supabase
+    let query = supabase
       .from('posts')
       .select(`
         id,
@@ -56,9 +60,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       `)
       .eq('notes_notified', false)
       .not('notes', 'is', null)
-      .not('notes', 'eq', '')
-      .lt('notes_updated_at', twentyMinutesAgo)
-      .order('notes_updated_at', { ascending: true });
+      .not('notes', 'eq', '');
+
+    // Only apply time filter if not in test mode
+    if (!isTestMode) {
+      query = query.lt('notes_updated_at', twentyMinutesAgo);
+    }
+
+    const { data: posts, error: postsError } = await query.order('notes_updated_at', { ascending: true });
 
     if (postsError) {
       console.error('Error fetching posts:', postsError);
