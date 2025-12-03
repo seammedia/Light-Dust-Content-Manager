@@ -467,6 +467,8 @@ export default function App() {
   const [emailTo, setEmailTo] = useState('');
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody, setEmailBody] = useState('');
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [previewImagePostId, setPreviewImagePostId] = useState<string | null>(null);
 
   // Schedule Posts state
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -1533,42 +1535,46 @@ Heath`
 
                             {/* Creative Column */}
                             <td className="p-4 align-top border-r border-stone-200">
-                                <div className="space-y-3">
-                                    <div className="relative aspect-square w-full rounded-md overflow-hidden bg-stone-100 border border-stone-200 shadow-sm group/image cursor-pointer">
+                                <div className="space-y-2">
+                                    {/* Image Preview - Clickable to enlarge */}
+                                    <div
+                                      className="relative aspect-square w-full rounded-md overflow-hidden bg-stone-100 border border-stone-200 shadow-sm cursor-pointer group/image"
+                                      onClick={() => {
+                                        if (post.imageUrl) {
+                                          setPreviewImageUrl(post.imageUrl);
+                                          setPreviewImagePostId(post.id);
+                                        }
+                                      }}
+                                    >
                                         {post.imageUrl ? (
-                                            <img 
-                                              src={post.imageUrl} 
-                                              alt="Creative" 
-                                              className="w-full h-full object-cover" 
-                                              onError={(e) => {
-                                                e.currentTarget.style.display = 'none';
-                                                e.currentTarget.parentElement?.classList.add('image-error');
-                                              }}
-                                            />
-                                        ) : null}
-                                        
-                                        <div className={`absolute inset-0 flex flex-col items-center justify-center text-stone-400 ${post.imageUrl ? '-z-10' : 'z-0'}`}>
-                                            <div className="p-2 bg-stone-200 rounded-full mb-2">
-                                              <Upload className="w-5 h-5 text-stone-500" />
+                                            <>
+                                                <img
+                                                  src={post.imageUrl}
+                                                  alt="Creative"
+                                                  className="w-full h-full object-cover"
+                                                  onError={(e) => {
+                                                    e.currentTarget.style.display = 'none';
+                                                    e.currentTarget.parentElement?.classList.add('image-error');
+                                                  }}
+                                                />
+                                                {/* Click to enlarge hint */}
+                                                <div className="absolute inset-0 bg-black/0 group-hover/image:bg-black/20 transition-colors flex items-center justify-center">
+                                                    <div className="bg-white/90 text-stone-800 text-xs font-medium px-3 py-1.5 rounded shadow-sm opacity-0 group-hover/image:opacity-100 transform translate-y-1 group-hover/image:translate-y-0 transition-all">
+                                                        Click to enlarge
+                                                    </div>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="absolute inset-0 flex flex-col items-center justify-center text-stone-400">
+                                                <div className="p-2 bg-stone-200 rounded-full mb-2">
+                                                  <Image className="w-5 h-5 text-stone-500" />
+                                                </div>
+                                                <span className="text-[10px] uppercase font-bold tracking-wider text-stone-500">No Image</span>
                                             </div>
-                                            <span className="text-[10px] uppercase font-bold tracking-wider text-stone-500">Upload Image</span>
-                                        </div>
-
-                                        <div className="absolute inset-0 bg-black/0 group-hover/image:bg-black/20 transition-colors z-10 flex items-center justify-center">
-                                            <div className="bg-white/90 text-stone-800 text-xs font-medium px-3 py-1.5 rounded shadow-sm opacity-0 group-hover/image:opacity-100 transform translate-y-1 group-hover/image:translate-y-0 transition-all">
-                                                {post.imageUrl ? 'Change Image' : 'Select Image'}
-                                            </div>
-                                        </div>
-
-                                        <input 
-                                          type="file" 
-                                          accept="image/*" 
-                                          onChange={(e) => handleImageChange(post.id, e)}
-                                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
-                                        />
+                                        )}
 
                                         {post.status === 'Posted' && (
-                                            <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white font-medium text-sm z-30 pointer-events-none">
+                                            <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white font-medium text-sm pointer-events-none">
                                                 POSTED
                                             </div>
                                         )}
@@ -1581,6 +1587,19 @@ Heath`
                                             </div>
                                         )}
                                     </div>
+
+                                    {/* Upload Button - Always visible below image */}
+                                    <label className="flex items-center justify-center gap-2 px-3 py-2 border border-stone-300 rounded-md cursor-pointer hover:bg-stone-50 hover:border-brand-green transition-colors text-xs font-medium text-stone-600 hover:text-brand-green">
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          onChange={(e) => handleImageChange(post.id, e)}
+                                          className="hidden"
+                                          disabled={post.status === 'Posted'}
+                                        />
+                                        <Upload className="w-3.5 h-3.5" />
+                                        {post.imageUrl ? 'Change Image' : 'Upload Image'}
+                                    </label>
                                 </div>
                             </td>
 
@@ -1983,6 +2002,57 @@ Example:
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Image Preview Modal */}
+      {previewImageUrl && (
+        <div
+          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
+          onClick={() => {
+            setPreviewImageUrl(null);
+            setPreviewImagePostId(null);
+          }}
+        >
+          <div className="relative max-w-4xl max-h-[90vh] w-full" onClick={(e) => e.stopPropagation()}>
+            {/* Close Button */}
+            <button
+              onClick={() => {
+                setPreviewImageUrl(null);
+                setPreviewImagePostId(null);
+              }}
+              className="absolute -top-10 right-0 text-white hover:text-stone-300 transition-colors"
+            >
+              <X className="w-8 h-8" />
+            </button>
+
+            {/* Image */}
+            <img
+              src={previewImageUrl}
+              alt="Preview"
+              className="w-full h-auto max-h-[80vh] object-contain rounded-lg shadow-2xl"
+            />
+
+            {/* Upload New Image Button */}
+            {previewImagePostId && (
+              <div className="mt-4 flex justify-center">
+                <label className="flex items-center gap-2 px-4 py-2 bg-white text-stone-700 rounded-lg cursor-pointer hover:bg-stone-100 transition-colors text-sm font-medium shadow-lg">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      handleImageChange(previewImagePostId, e);
+                      setPreviewImageUrl(null);
+                      setPreviewImagePostId(null);
+                    }}
+                    className="hidden"
+                  />
+                  <Upload className="w-4 h-4" />
+                  Upload New Image
+                </label>
+              </div>
+            )}
           </div>
         </div>
       )}
