@@ -780,13 +780,20 @@ export default function App() {
       return profile?.platform === 'instagram';
     });
 
+    // Helper to check if post has a valid image URL (not empty, not base64)
+    const hasValidImage = (post: Post) => {
+      return post.imageUrl &&
+             post.imageUrl.trim() !== '' &&
+             post.imageUrl.startsWith('http');
+    };
+
     // Filter approved posts, and if Instagram is selected, require images
     let approvedPosts = filteredPosts.filter(p => p.status === 'Approved');
 
     if (hasInstagram) {
-      const postsWithoutImages = approvedPosts.filter(p => !p.imageUrl);
+      const postsWithoutImages = approvedPosts.filter(p => !hasValidImage(p));
       if (postsWithoutImages.length > 0) {
-        approvedPosts = approvedPosts.filter(p => p.imageUrl);
+        approvedPosts = approvedPosts.filter(p => hasValidImage(p));
         if (approvedPosts.length === 0) {
           alert('Instagram posts require images. Please upload images to the approved posts first.');
           return;
@@ -1820,7 +1827,7 @@ Example:
             <div className="mb-4 text-sm text-stone-600">
               {(() => {
                 const approved = filteredPosts.filter(p => p.status === 'Approved');
-                const withImages = approved.filter(p => p.imageUrl);
+                const withImages = approved.filter(p => p.imageUrl && p.imageUrl.trim() !== '' && p.imageUrl.startsWith('http'));
                 const withoutImages = approved.length - withImages.length;
                 return (
                   <>
@@ -1913,7 +1920,8 @@ Example:
                 {(() => {
                   const approved = filteredPosts.filter(p => p.status === 'Approved');
                   const hasInstagram = selectedProfiles.some(id => lateProfiles.find(p => p.id === id)?.platform === 'instagram');
-                  const schedulablePosts = hasInstagram ? approved.filter(p => p.imageUrl).length : approved.length;
+                  const hasValidImage = (p: Post) => p.imageUrl && p.imageUrl.trim() !== '' && p.imageUrl.startsWith('http');
+                  const schedulablePosts = hasInstagram ? approved.filter(p => hasValidImage(p)).length : approved.length;
                   return (
                     <p className="text-blue-800">
                       <span className="font-bold">{schedulablePosts}</span> post(s) will be scheduled to{' '}
