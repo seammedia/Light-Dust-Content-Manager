@@ -4,7 +4,7 @@ import { PostEditor } from './components/PostEditor';
 import { MetaSettings } from './src/components/MetaSettings';
 import { supabase } from './services/supabaseClient';
 import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles, Mail, Clock, Send, FileText } from 'lucide-react';
-import { generateCaptionFromImage, updateFromFeedback } from './services/geminiService';
+import { generateCaptionFromImage, updateFromFeedback, generateImageFromFeedback } from './services/geminiService';
 import { isGmailConnected, getConnectedEmail, connectGmail, sendEmail, clearGmailSettings } from './services/gmailService';
 import { isLateConfigured, getProfiles, schedulePost, LateProfile } from './services/lateService';
 import { uploadImage } from './services/storageService';
@@ -1031,33 +1031,95 @@ Heath`;
     }
   };
 
+  // Helper to detect if feedback is about images
+  const isImageRelatedFeedback = (feedback: string): boolean => {
+    const imageKeywords = [
+      'image', 'photo', 'picture', 'background', 'visual', 'boring',
+      'different image', 'another image', 'new image', 'change image',
+      'replace image', 'update image', 'regenerate', 'redesign',
+      'looks like', 'too plain', 'too simple', 'more exciting',
+      'color', 'colours', 'lighting', 'style', 'aesthetic'
+    ];
+    const lowerFeedback = feedback.toLowerCase();
+    return imageKeywords.some(keyword => lowerFeedback.includes(keyword));
+  };
+
   const handleUpdateFromFeedback = async (post: Post) => {
     if (!post.notes || !currentClient) {
       alert('No feedback to process. Please add client notes first.');
       return;
     }
 
-    if (!post.generatedCaption && (!post.generatedHashtags || post.generatedHashtags.length === 0)) {
-      alert('No caption or hashtags to update. Please generate content first.');
-      return;
-    }
-
     setUpdatingFromFeedbackId(post.id);
 
     try {
-      const result = await updateFromFeedback(
-        post.generatedCaption || '',
-        post.generatedHashtags || [],
-        post.notes,
-        currentClient.brand_name,
-        currentClient.client_notes
-      );
+      const feedbackIsAboutImage = isImageRelatedFeedback(post.notes);
 
-      // Update caption
-      await handleUpdatePost(post.id, 'generatedCaption', result.caption);
+      // If feedback mentions images, regenerate the image using Nano Banana Pro
+      if (feedbackIsAboutImage) {
+        try {
+          const brandContext = `Brand: ${currentClient.brand_name}. ${currentClient.client_notes || ''}`;
+          const imageResult = await generateImageFromFeedback(
+            post.imageUrl || null,
+            post.notes,
+            brandContext
+          );
 
-      // Update hashtags
-      await handleUpdatePost(post.id, 'generatedHashtags', result.hashtags);
+          // Convert base64 to data URL and upload
+          const dataUrl = `data:${imageResult.mimeType};base64,${imageResult.imageBase64}`;
+
+          // Upload the generated image to storage
+          const uploadedUrl = await uploadImage(dataUrl, currentClient.id, post.id);
+
+          // Update the post with new image
+          await handleUpdatePost(post.id, 'imageUrl', uploadedUrl);
+
+          // Regenerate caption for the new image
+          const captionResult = await generateCaptionFromImage(
+            uploadedUrl,
+            currentClient.brand_name,
+            currentClient.client_notes
+          );
+
+          await handleUpdatePost(post.id, 'generatedCaption', captionResult.caption);
+          await handleUpdatePost(post.id, 'generatedHashtags', captionResult.hashtags);
+
+        } catch (imageError: any) {
+          console.error('Image generation failed:', imageError);
+          // Fall back to just updating caption/hashtags if image generation fails
+          if (post.generatedCaption || (post.generatedHashtags && post.generatedHashtags.length > 0)) {
+            const result = await updateFromFeedback(
+              post.generatedCaption || '',
+              post.generatedHashtags || [],
+              post.notes,
+              currentClient.brand_name,
+              currentClient.client_notes
+            );
+            await handleUpdatePost(post.id, 'generatedCaption', result.caption);
+            await handleUpdatePost(post.id, 'generatedHashtags', result.hashtags);
+            alert(`Image generation unavailable (${imageError.message}). Caption/hashtags updated instead.`);
+          } else {
+            throw imageError;
+          }
+        }
+      } else {
+        // Feedback is just about caption/hashtags
+        if (!post.generatedCaption && (!post.generatedHashtags || post.generatedHashtags.length === 0)) {
+          alert('No caption or hashtags to update. Please generate content first.');
+          return;
+        }
+
+        const result = await updateFromFeedback(
+          post.generatedCaption || '',
+          post.generatedHashtags || [],
+          post.notes,
+          currentClient.brand_name,
+          currentClient.client_notes
+        );
+
+        await handleUpdatePost(post.id, 'generatedCaption', result.caption);
+        await handleUpdatePost(post.id, 'generatedHashtags', result.hashtags);
+      }
 
     } catch (error: any) {
       console.error('Error updating from feedback:', error);

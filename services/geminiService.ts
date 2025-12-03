@@ -1,7 +1,9 @@
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import { GoogleGenAI, Modality } from "@google/genai";
 import { BrandContext, GenerationResult } from "../types";
 
 const getClient = () => new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || '');
+const getGenAIClient = () => new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' });
 
 // Helper to detect MIME type from base64 data URL
 const getMimeType = (dataUrl: string): string => {
@@ -323,4 +325,114 @@ export const generatePostContent = async (
     console.error("Gemini Generation Error:", error);
     throw error;
   }
+};
+
+// Generate or edit an image using Nano Banana Pro (Gemini Image Generation)
+// Tries gemini-2.5-flash-image first (more widely available), then gemini-3-pro-image-preview
+export const generateImageFromFeedback = async (
+  currentImageSource: string | null,
+  feedback: string,
+  brandContext?: string
+): Promise<{ imageBase64: string; mimeType: string }> => {
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('Gemini API key not configured.');
+  }
+
+  const client = getGenAIClient();
+
+  // Build the prompt based on whether we're editing or generating new
+  let prompt: string;
+  if (currentImageSource) {
+    prompt = `Edit this image based on the following feedback: "${feedback}"
+
+${brandContext ? `Brand context: ${brandContext}` : ''}
+
+Important: Make the requested changes while maintaining high quality and professional appearance suitable for social media marketing.`;
+  } else {
+    prompt = `Generate a new image based on this description: "${feedback}"
+
+${brandContext ? `Brand context: ${brandContext}` : ''}
+
+Important: Create a high-quality, professional image suitable for social media marketing.`;
+  }
+
+  // Models to try in order of preference
+  const modelsToTry = ['gemini-2.5-flash-image', 'gemini-3-pro-image-preview'];
+
+  for (const modelName of modelsToTry) {
+    try {
+      console.log(`Trying image generation with model: ${modelName}`);
+
+      // Build contents array
+      const contents: any[] = [];
+
+      if (currentImageSource) {
+        // If editing an existing image, include it
+        let imageData: { base64: string; mimeType: string };
+
+        if (isUrl(currentImageSource)) {
+          imageData = await fetchImageAsBase64(currentImageSource);
+        } else {
+          const mimeType = getMimeType(currentImageSource);
+          const base64 = currentImageSource.split(',')[1] || currentImageSource;
+          imageData = { base64, mimeType };
+        }
+
+        contents.push({
+          inlineData: {
+            mimeType: imageData.mimeType,
+            data: imageData.base64,
+          },
+        });
+      }
+
+      contents.push(prompt);
+
+      const response = await client.models.generateContent({
+        model: modelName,
+        contents: contents,
+        config: {
+          responseModalities: [Modality.TEXT, Modality.IMAGE],
+        },
+      });
+
+      // Extract the generated image from the response
+      if (!response.candidates || response.candidates.length === 0) {
+        console.warn(`No candidates in response from ${modelName}`);
+        continue;
+      }
+
+      const candidate = response.candidates[0];
+      if (!candidate.content || !candidate.content.parts) {
+        console.warn(`No content parts in response from ${modelName}`);
+        continue;
+      }
+
+      // Find the image part in the response
+      for (const part of candidate.content.parts) {
+        if (part.inlineData && part.inlineData.data) {
+          console.log(`Successfully generated image with ${modelName}`);
+          return {
+            imageBase64: part.inlineData.data,
+            mimeType: part.inlineData.mimeType || 'image/png',
+          };
+        }
+      }
+
+      console.warn(`No image data in response from ${modelName}`);
+
+    } catch (error: any) {
+      console.warn(`Model ${modelName} failed:`, error.message);
+      // Continue to next model
+    }
+  }
+
+  // If all models failed, throw a descriptive error
+  throw new Error('Image generation is not available with your current API key. Your Gemini API key may not have access to image generation models (gemini-2.5-flash-image or gemini-3-pro-image-preview). Please check your Google AI Studio account tier and permissions.');
+};
+
+// Check if Nano Banana Pro image generation is available
+export const isImageGenerationAvailable = (): boolean => {
+  return !!import.meta.env.VITE_GEMINI_API_KEY;
 };
