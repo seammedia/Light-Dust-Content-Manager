@@ -13,9 +13,36 @@ const getMimeType = (dataUrl: string): string => {
   return 'image/jpeg';
 };
 
+// Helper to fetch image from URL and convert to base64
+const fetchImageAsBase64 = async (url: string): Promise<{ base64: string; mimeType: string }> => {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch image: ${response.statusText}`);
+  }
+  const blob = await response.blob();
+  const mimeType = blob.type || 'image/jpeg';
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const dataUrl = reader.result as string;
+      // Extract base64 data (remove the data:mime;base64, prefix)
+      const base64 = dataUrl.split(',')[1] || dataUrl;
+      resolve({ base64, mimeType });
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+};
+
+// Check if a string is a URL
+const isUrl = (str: string): boolean => {
+  return str.startsWith('http://') || str.startsWith('https://');
+};
+
 // Simple caption generation from image for agency use
 export const generateCaptionFromImage = async (
-  imageBase64: string,
+  imageSource: string,
   brandName: string,
   clientNotes?: string
 ): Promise<{ caption: string; hashtags: string[] }> => {
@@ -72,11 +99,20 @@ export const generateCaptionFromImage = async (
     Remember: NO em dashes or en dashes. Use commas, periods, or line breaks instead.
   `;
 
-  // Detect MIME type from data URL
-  const mimeType = getMimeType(imageBase64);
+  // Handle both URLs and base64 data
+  let cleanBase64: string;
+  let mimeType: string;
 
-  // Strip header if present (e.g., "data:image/jpeg;base64,")
-  const cleanBase64 = imageBase64.split(',')[1] || imageBase64;
+  if (isUrl(imageSource)) {
+    // Fetch the image and convert to base64
+    const imageData = await fetchImageAsBase64(imageSource);
+    cleanBase64 = imageData.base64;
+    mimeType = imageData.mimeType;
+  } else {
+    // Already base64 data
+    mimeType = getMimeType(imageSource);
+    cleanBase64 = imageSource.split(',')[1] || imageSource;
+  }
 
   const parts = [
     {
