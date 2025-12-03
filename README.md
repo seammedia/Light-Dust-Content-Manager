@@ -22,6 +22,7 @@ A multi-client social content management platform where agencies can manage mult
 - 🖼️ **Auto Image Cropping** - Automatically crops images to fit Instagram's aspect ratio requirements
 - ☁️ **Supabase Storage** - Images stored as public URLs for social media compatibility
 - 🧹 **Auto Cleanup** - Old images automatically deleted after 60 days to save storage
+- 📬 **Client Notes Notifications** - Email alerts when clients add feedback (via Resend)
 
 ## Setup Instructions
 
@@ -92,7 +93,62 @@ A multi-client social content management platform where agencies can manage mult
 - Free tier: 10 posts/month, 2 profiles
 - Paid: $19/mo (120 posts) or $49/mo (unlimited)
 
-### 5. Supabase Storage Setup (For Images)
+### 5. Client Notes Email Notifications (Resend + Cron)
+
+Get email alerts at `contact@seammedia.com.au` when clients add notes/feedback to posts.
+
+#### 5.1 Supabase Setup
+
+Run `add-notes-tracking.sql` in Supabase SQL Editor to add tracking columns:
+
+```sql
+-- Adds notes_updated_at and notes_notified columns
+-- Creates trigger to track when notes are modified
+```
+
+#### 5.2 Resend Setup (Email Service)
+
+1. Go to [Resend](https://resend.com) and create a free account (3,000 emails/month free)
+2. Add and verify your domain:
+   - Go to **Domains** → **Add Domain**
+   - Enter `seammedia.com.au`
+   - Add the DNS records (DKIM, SPF) to your domain registrar
+   - Wait for verification (usually instant)
+3. Create an API key:
+   - Go to **API Keys** → **Create API Key**
+   - Name: `Notes Tracking`
+   - Permission: `Sending access`
+4. Add to Vercel: `RESEND_API_KEY=re_xxxxx`
+
+#### 5.3 External Cron Setup (cron-job.org)
+
+Vercel's free plan only allows daily cron jobs. Use [cron-job.org](https://cron-job.org) (free) for more frequent checks:
+
+1. Create account at https://cron-job.org
+2. Create new cronjob:
+   - **Title**: `Light Dust Notes Notifications`
+   - **URL**: `https://seam-media-content-manager.vercel.app/api/notify-notes?secret=YOUR_CRON_SECRET`
+   - **Schedule**: Every 15 minutes
+   - **Request Method**: GET
+3. Add `CRON_SECRET` to Vercel environment variables (any random string)
+
+#### 5.4 How It Works
+
+1. Client adds/edits notes on a post
+2. Database trigger sets `notes_updated_at` timestamp and `notes_notified = false`
+3. Cron job runs every 15 minutes
+4. Checks for notes older than 20 minutes that haven't been notified (batching delay)
+5. Sends email to `contact@seammedia.com.au` with all new notes grouped by client
+6. Marks posts as `notes_notified = true`
+
+#### 5.5 Testing
+
+Add `&test=true` to bypass the 20-minute delay:
+```
+https://seam-media-content-manager.vercel.app/api/notify-notes?secret=YOUR_CRON_SECRET&test=true
+```
+
+### 6. Supabase Storage Setup (For Images)
 
 Images must be stored as public URLs for Late API to access them.
 
@@ -117,7 +173,7 @@ Images must be stored as public URLs for Late API to access them.
 - Runs daily via Vercel Cron (requires Pro plan) or manual trigger
 - Manual cleanup: Visit `/api/cleanup-storage`
 
-### 6. Vercel Deployment
+### 7. Vercel Deployment
 
 1. Push your code to GitHub
 2. Go to [Vercel](https://vercel.com) and import your repository
@@ -129,13 +185,15 @@ Images must be stored as public URLs for Late API to access them.
    VITE_GEMINI_API_KEY=your_gemini_api_key_here
    VITE_GOOGLE_CLIENT_ID=your_google_oauth_client_id_here
    VITE_LATE_API_KEY=your_late_api_key_here
+   RESEND_API_KEY=re_xxxxx
+   CRON_SECRET=your_random_secret_string
    ```
 
-   ⚠️ **Important**: All variables MUST start with `VITE_` or they won't work!
+   ⚠️ **Important**: Frontend variables MUST start with `VITE_`. Server-side only vars (RESEND_API_KEY, CRON_SECRET) don't need the prefix.
 
 4. Deploy your application
 
-### 7. Local Development
+### 8. Local Development
 
 1. Clone the repository:
    ```bash
@@ -470,7 +528,17 @@ The content manager integrates with [Late API](https://getlate.dev) for scheduli
 
 ## Development History
 
-### Recent Updates (2025-12-01)
+### Recent Updates (2025-12-03)
+
+1. **Client Notes Email Notifications** - Get email alerts when clients add feedback to posts
+   - Uses Resend for email delivery (free tier: 3,000 emails/month)
+   - External cron via cron-job.org (every 15 minutes) - works on Vercel free plan
+   - 20-minute batching delay so clients can finish typing
+   - Emails grouped by client with post details
+2. **Gemini Image URL Fix** - Fixed "Base64 decoding failed" error when generating captions
+   - Now properly fetches images from Supabase URLs and converts to base64 for Gemini API
+
+### Updates (2025-12-01)
 
 1. **Late API Integration** - Schedule posts to Instagram, Facebook, TikTok, etc. via Late API
 2. **Supabase Storage** - Images now stored as public URLs instead of base64
@@ -534,7 +602,8 @@ See `DEPLOYMENT.md` for detailed technical documentation of all improvements.
 - `supabase-multi-client-schema.sql` - Initial database migration
 - `verify-and-fix-clients.sql` - Client verification and setup script
 - `add-abercrombie-ridge.sql` - Example of adding a new client
-- `add-meta-integration-schema.sql` - **NEW!** Meta API integration schema
+- `add-meta-integration-schema.sql` - Meta API integration schema
+- `add-notes-tracking.sql` - Client notes notification tracking columns
 
 ### Source Code
 - `App.tsx` - Main application with scheduling logic
@@ -548,6 +617,7 @@ See `DEPLOYMENT.md` for detailed technical documentation of all improvements.
 - `api/late-profiles.ts` - Serverless function to fetch Late accounts
 - `api/late-schedule.ts` - Serverless function to schedule posts via Late
 - `api/cleanup-storage.ts` - Serverless function for storage cleanup
+- `api/notify-notes.ts` - Serverless function for client notes email notifications
 - `api/post-to-meta.ts` - Vercel serverless function for Meta posting (legacy)
 - `public/oauth/callback/index.html` - Gmail OAuth callback handler
 - `vercel.json` - Vercel configuration with cron jobs
@@ -658,6 +728,7 @@ Potential features to add:
 - [x] ~~Supabase Storage for images~~ ✅ **COMPLETED** - Public URLs for Late API
 - [x] ~~Auto image cropping for Instagram~~ ✅ **COMPLETED** - Aspect ratio 0.75-1.91
 - [x] ~~Storage cleanup~~ ✅ **COMPLETED** - Auto-delete after 60 days
+- [x] ~~Client notes notifications~~ ✅ **COMPLETED** - Resend + cron-job.org
 - [ ] Refresh token for Gmail (avoid re-auth every hour)
 - [ ] Client-specific branding/themes
 - [ ] Usage analytics per client
