@@ -1638,7 +1638,7 @@ Heath`
                                     <label className="flex items-center justify-center gap-2 px-3 py-2 border border-stone-300 rounded-md cursor-pointer hover:bg-stone-50 hover:border-brand-green transition-colors text-xs font-medium text-stone-600 hover:text-brand-green">
                                         <input
                                           type="file"
-                                          accept="image/*,video/mp4,video/quicktime,video/webm,video/x-m4v"
+                                          accept="image/*,video/*"
                                           onChange={(e) => handleMediaChange(post.id, e)}
                                           className="hidden"
                                           disabled={post.status === 'Posted'}
@@ -2103,7 +2103,7 @@ Example:
                 <label className="flex items-center gap-2 px-4 py-2 bg-white text-stone-700 rounded-lg cursor-pointer hover:bg-stone-100 transition-colors text-sm font-medium shadow-lg">
                   <input
                     type="file"
-                    accept="image/*,video/mp4,video/quicktime,video/webm,video/x-m4v"
+                    accept="image/*,video/*"
                     onChange={(e) => {
                       handleMediaChange(previewImagePostId, e);
                       setPreviewImageUrl(null);

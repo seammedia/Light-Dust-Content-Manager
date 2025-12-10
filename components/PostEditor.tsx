@@ -82,7 +82,7 @@ export const PostEditor: React.FC<PostEditorProps> = ({ post, onUpdate, onClose 
             )}
             <input
                 type="file"
-                accept="image/*,video/mp4,video/quicktime,video/webm,video/x-m4v"
+                accept="image/*,video/*"
                 onChange={handleMediaUpload}
                 className="absolute inset-0 opacity-0 cursor-pointer"
             />
