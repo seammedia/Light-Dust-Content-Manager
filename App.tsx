@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Post, BrandContext, Client } from './types';
+import { Post, BrandContext, Client, MediaType } from './types';
 import { PostEditor } from './components/PostEditor';
 import { MetaSettings } from './src/components/MetaSettings';
 import { supabase } from './services/supabaseClient';
-import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles, Mail, Clock, Send, FileText, Image, X } from 'lucide-react';
+import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles, Mail, Clock, Send, FileText, Image, Film, X } from 'lucide-react';
 import { generateCaptionFromImage, updateFromFeedback, generateImageFromFeedback } from './services/geminiService';
 import { isGmailConnected, getConnectedEmail, connectGmail, sendEmail, clearGmailSettings } from './services/gmailService';
 import { isLateConfigured, getProfiles, schedulePost, LateProfile } from './services/lateService';
-import { uploadImage } from './services/storageService';
+import { uploadMedia, uploadImage, detectMediaType } from './services/storageService';
 
 // Debounced Textarea Component - prevents typing lag
 function DebouncedTextarea({
@@ -135,13 +135,23 @@ function PostDetailModal({ post, onClose }: { post: Post, onClose: () => void })
         </button>
 
         <div className="flex">
-          {/* Left side - Image */}
+          {/* Left side - Image/Video */}
           <div className="w-1/2 flex-shrink-0">
             {post.imageUrl ? (
-              <img src={post.imageUrl} alt="Post" className="w-full h-full object-cover rounded-l-xl" />
+              post.mediaType === 'video' ? (
+                <video
+                  src={post.imageUrl}
+                  className="w-full h-full object-cover rounded-l-xl"
+                  controls
+                  muted
+                  playsInline
+                />
+              ) : (
+                <img src={post.imageUrl} alt="Post" className="w-full h-full object-cover rounded-l-xl" />
+              )
             ) : (
               <div className="w-full h-full min-h-[400px] bg-stone-100 rounded-l-xl flex items-center justify-center">
-                <span className="text-stone-400">No image</span>
+                <span className="text-stone-400">No media</span>
               </div>
             )}
           </div>
@@ -376,11 +386,17 @@ function CalendarView({ posts, selectedMonth }: { posts: Post[], selectedMonth: 
                       >
                         {/* Thumbnail */}
                         {post.imageUrl ? (
-                          <img
-                            src={post.imageUrl}
-                            alt=""
-                            className="w-8 h-8 object-cover rounded flex-shrink-0"
-                          />
+                          post.mediaType === 'video' ? (
+                            <div className="w-8 h-8 bg-stone-800 rounded flex-shrink-0 flex items-center justify-center">
+                              <Film className="w-4 h-4 text-white" />
+                            </div>
+                          ) : (
+                            <img
+                              src={post.imageUrl}
+                              alt=""
+                              className="w-8 h-8 object-cover rounded flex-shrink-0"
+                            />
+                          )
                         ) : (
                           <div className="w-8 h-8 bg-pink-200 rounded flex-shrink-0 flex items-center justify-center">
                             <span className="text-[10px] text-pink-400">No img</span>
@@ -415,6 +431,7 @@ const mapDbToPost = (dbPost: any): Post => ({
   status: dbPost.status as any,
   imageDescription: dbPost.image_description || '',
   imageUrl: dbPost.image_url || '',
+  mediaType: (dbPost.media_type as MediaType) || 'image',
   generatedCaption: dbPost.generated_caption || '',
   generatedHashtags: dbPost.generated_hashtags || [],
   notes: dbPost.notes || ''
@@ -429,6 +446,7 @@ const mapPostToDb = (post: Partial<Post>) => {
   if (post.status !== undefined) dbObj.status = post.status;
   if (post.imageDescription !== undefined) dbObj.image_description = post.imageDescription;
   if (post.imageUrl !== undefined) dbObj.image_url = post.imageUrl;
+  if (post.mediaType !== undefined) dbObj.media_type = post.mediaType;
   if (post.generatedCaption !== undefined) dbObj.generated_caption = post.generatedCaption;
   if (post.generatedHashtags !== undefined) dbObj.generated_hashtags = post.generatedHashtags;
   if (post.notes !== undefined) dbObj.notes = post.notes;
@@ -786,25 +804,25 @@ export default function App() {
       return profile?.platform === 'instagram';
     });
 
-    // Helper to check if post has a valid image URL (not empty, not base64)
-    const hasValidImage = (post: Post) => {
+    // Helper to check if post has valid media URL (not empty, not base64)
+    const hasValidMedia = (post: Post) => {
       return post.imageUrl &&
              post.imageUrl.trim() !== '' &&
              post.imageUrl.startsWith('http');
     };
 
-    // Filter approved posts, and if Instagram is selected, require images
+    // Filter approved posts, and if Instagram is selected, require media
     let approvedPosts = filteredPosts.filter(p => p.status === 'Approved');
 
     if (hasInstagram) {
-      const postsWithoutImages = approvedPosts.filter(p => !hasValidImage(p));
-      if (postsWithoutImages.length > 0) {
-        approvedPosts = approvedPosts.filter(p => hasValidImage(p));
+      const postsWithoutMedia = approvedPosts.filter(p => !hasValidMedia(p));
+      if (postsWithoutMedia.length > 0) {
+        approvedPosts = approvedPosts.filter(p => hasValidMedia(p));
         if (approvedPosts.length === 0) {
-          alert('Instagram posts require images. Please upload images to the approved posts first.');
+          alert('Instagram posts require media. Please upload images or videos to the approved posts first.');
           return;
         }
-        alert(`Note: ${postsWithoutImages.length} post(s) without images will be skipped (Instagram requires images).`);
+        alert(`Note: ${postsWithoutMedia.length} post(s) without media will be skipped (Instagram requires images/videos).`);
       }
     }
 
@@ -844,6 +862,7 @@ export default function App() {
             platforms,
             content,
             mediaUrls: post.imageUrl ? [post.imageUrl] : [],
+            mediaType: post.mediaType || 'image',
             scheduledFor,
           });
           successCount++;
@@ -1014,13 +1033,19 @@ export default function App() {
     }
   };
 
-  const handleImageChange = async (id: string, e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleMediaChange = async (id: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !currentClient) return;
 
-    // 10MB limit for Supabase Storage
-    if (file.size > 10 * 1024 * 1024) {
-      alert("Image is too large. Please use an image under 10MB.");
+    // Detect media type
+    const mediaType = detectMediaType(file);
+
+    // Size limits: 500MB for videos, 10MB for images
+    const maxSize = mediaType === 'video' ? 500 * 1024 * 1024 : 10 * 1024 * 1024;
+    const maxSizeMB = maxSize / (1024 * 1024);
+
+    if (file.size > maxSize) {
+      alert(`File is too large. Please use a ${mediaType} under ${maxSizeMB}MB.`);
       return;
     }
 
@@ -1028,13 +1053,14 @@ export default function App() {
 
     try {
       // Upload to Supabase Storage and get public URL
-      const publicUrl = await uploadImage(file, currentClient.id, id);
+      const { url: publicUrl, mediaType: detectedType } = await uploadMedia(file, currentClient.id, id);
 
-      // Save the public URL to the database
+      // Save the public URL and media type to the database
       await handleUpdatePost(id, 'imageUrl', publicUrl);
+      await handleUpdatePost(id, 'mediaType', detectedType);
     } catch (error: any) {
-      console.error('Image upload error:', error);
-      alert(error.message || 'Failed to upload image. Please try again.');
+      console.error('Media upload error:', error);
+      alert(error.message || 'Failed to upload media. Please try again.');
     } finally {
       setUploadingImageId(null);
     }
@@ -1548,19 +1574,39 @@ Heath`
                                     >
                                         {post.imageUrl ? (
                                             <>
-                                                <img
-                                                  src={post.imageUrl}
-                                                  alt="Creative"
-                                                  className="w-full h-full object-cover"
-                                                  onError={(e) => {
-                                                    e.currentTarget.style.display = 'none';
-                                                    e.currentTarget.parentElement?.classList.add('image-error');
-                                                  }}
-                                                />
+                                                {post.mediaType === 'video' ? (
+                                                  <video
+                                                    src={post.imageUrl}
+                                                    className="w-full h-full object-cover"
+                                                    muted
+                                                    playsInline
+                                                    onError={(e) => {
+                                                      e.currentTarget.style.display = 'none';
+                                                      e.currentTarget.parentElement?.classList.add('image-error');
+                                                    }}
+                                                  />
+                                                ) : (
+                                                  <img
+                                                    src={post.imageUrl}
+                                                    alt="Creative"
+                                                    className="w-full h-full object-cover"
+                                                    onError={(e) => {
+                                                      e.currentTarget.style.display = 'none';
+                                                      e.currentTarget.parentElement?.classList.add('image-error');
+                                                    }}
+                                                  />
+                                                )}
+                                                {/* Video indicator */}
+                                                {post.mediaType === 'video' && (
+                                                    <div className="absolute top-2 left-2 bg-black/70 text-white text-[10px] font-medium px-2 py-1 rounded flex items-center gap-1">
+                                                        <Film className="w-3 h-3" />
+                                                        VIDEO
+                                                    </div>
+                                                )}
                                                 {/* Click to enlarge hint */}
                                                 <div className="absolute inset-0 bg-black/0 group-hover/image:bg-black/20 transition-colors flex items-center justify-center">
                                                     <div className="bg-white/90 text-stone-800 text-xs font-medium px-3 py-1.5 rounded shadow-sm opacity-0 group-hover/image:opacity-100 transform translate-y-1 group-hover/image:translate-y-0 transition-all">
-                                                        Click to enlarge
+                                                        Click to {post.mediaType === 'video' ? 'preview' : 'enlarge'}
                                                     </div>
                                                 </div>
                                             </>
@@ -1569,7 +1615,7 @@ Heath`
                                                 <div className="p-2 bg-stone-200 rounded-full mb-2">
                                                   <Image className="w-5 h-5 text-stone-500" />
                                                 </div>
-                                                <span className="text-[10px] uppercase font-bold tracking-wider text-stone-500">No Image</span>
+                                                <span className="text-[10px] uppercase font-bold tracking-wider text-stone-500">No Media</span>
                                             </div>
                                         )}
 
@@ -1592,13 +1638,13 @@ Heath`
                                     <label className="flex items-center justify-center gap-2 px-3 py-2 border border-stone-300 rounded-md cursor-pointer hover:bg-stone-50 hover:border-brand-green transition-colors text-xs font-medium text-stone-600 hover:text-brand-green">
                                         <input
                                           type="file"
-                                          accept="image/*"
-                                          onChange={(e) => handleImageChange(post.id, e)}
+                                          accept="image/*,video/mp4,video/quicktime,video/webm,video/x-m4v"
+                                          onChange={(e) => handleMediaChange(post.id, e)}
                                           className="hidden"
                                           disabled={post.status === 'Posted'}
                                         />
                                         <Upload className="w-3.5 h-3.5" />
-                                        {post.imageUrl ? 'Change Image' : 'Upload Image'}
+                                        {post.imageUrl ? (post.mediaType === 'video' ? 'Change Video' : 'Change Image') : 'Upload Media'}
                                     </label>
                                 </div>
                             </td>
@@ -2027,12 +2073,29 @@ Example:
               <X className="w-8 h-8" />
             </button>
 
-            {/* Image */}
-            <img
-              src={previewImageUrl}
-              alt="Preview"
-              className="w-full h-auto max-h-[80vh] object-contain rounded-lg shadow-2xl"
-            />
+            {/* Image/Video Preview */}
+            {(() => {
+              const previewPost = posts.find(p => p.id === previewImagePostId);
+              const isVideo = previewPost?.mediaType === 'video' ||
+                previewImageUrl.includes('.mp4') ||
+                previewImageUrl.includes('.mov') ||
+                previewImageUrl.includes('.webm');
+              return isVideo ? (
+                <video
+                  src={previewImageUrl}
+                  className="w-full h-auto max-h-[80vh] object-contain rounded-lg shadow-2xl"
+                  controls
+                  autoPlay
+                  muted
+                />
+              ) : (
+                <img
+                  src={previewImageUrl}
+                  alt="Preview"
+                  className="w-full h-auto max-h-[80vh] object-contain rounded-lg shadow-2xl"
+                />
+              );
+            })()}
 
             {/* Upload New Image Button */}
             {previewImagePostId && (
@@ -2040,16 +2103,16 @@ Example:
                 <label className="flex items-center gap-2 px-4 py-2 bg-white text-stone-700 rounded-lg cursor-pointer hover:bg-stone-100 transition-colors text-sm font-medium shadow-lg">
                   <input
                     type="file"
-                    accept="image/*"
+                    accept="image/*,video/mp4,video/quicktime,video/webm,video/x-m4v"
                     onChange={(e) => {
-                      handleImageChange(previewImagePostId, e);
+                      handleMediaChange(previewImagePostId, e);
                       setPreviewImageUrl(null);
                       setPreviewImagePostId(null);
                     }}
                     className="hidden"
                   />
                   <Upload className="w-4 h-4" />
-                  Upload New Image
+                  Upload New Media
                 </label>
               </div>
             )}

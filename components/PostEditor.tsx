@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Post, BrandContext } from '../types';
-import { Sparkles, Save } from 'lucide-react';
+import { Post, BrandContext, MediaType } from '../types';
+import { Sparkles, Save, Film, Image } from 'lucide-react';
+import { detectMediaType, validateFileSize } from '../services/storageService';
 
 interface PostEditorProps {
   post: Post;
@@ -11,17 +12,43 @@ interface PostEditorProps {
 
 export const PostEditor: React.FC<PostEditorProps> = ({ post, onUpdate, onClose }) => {
   const [editedPost, setEditedPost] = useState<Post>(post);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleMediaUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      setUploadError(null);
+
+      // Detect media type
+      const mediaType: MediaType = detectMediaType(file);
+
+      // Validate file size
+      const validation = validateFileSize(file, mediaType);
+      if (!validation.valid) {
+        setUploadError(validation.error || 'File too large');
+        return;
+      }
+
       const reader = new FileReader();
       reader.onloadend = () => {
-        setEditedPost(prev => ({ ...prev, imageUrl: reader.result as string }));
+        setEditedPost(prev => ({
+          ...prev,
+          imageUrl: reader.result as string,
+          mediaType: mediaType
+        }));
       };
       reader.readAsDataURL(file);
     }
   };
+
+  // Determine if current media is a video
+  const isVideo = editedPost.mediaType === 'video' ||
+    (editedPost.imageUrl && (
+      editedPost.imageUrl.startsWith('data:video/') ||
+      editedPost.imageUrl.includes('.mp4') ||
+      editedPost.imageUrl.includes('.mov') ||
+      editedPost.imageUrl.includes('.webm')
+    ));
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
@@ -29,23 +56,61 @@ export const PostEditor: React.FC<PostEditorProps> = ({ post, onUpdate, onClose 
         {/* Left: Image & Context */}
         <div className="w-1/3 bg-stone-100 p-6 border-r border-stone-200 overflow-y-auto">
           <h3 className="font-serif text-xl mb-4 text-brand-dark">New Post Visuals</h3>
-          
+
           <div className="aspect-square bg-white rounded-lg border-2 border-dashed border-stone-300 flex items-center justify-center mb-4 relative overflow-hidden group">
             {editedPost.imageUrl ? (
-              <img src={editedPost.imageUrl} alt="Post" className="w-full h-full object-cover" />
+              isVideo ? (
+                <video
+                  src={editedPost.imageUrl}
+                  className="w-full h-full object-cover"
+                  controls
+                  muted
+                  playsInline
+                />
+              ) : (
+                <img src={editedPost.imageUrl} alt="Post" className="w-full h-full object-cover" />
+              )
             ) : (
               <div className="text-stone-400 text-center p-4">
-                <p>Upload Image</p>
+                <div className="flex justify-center gap-2 mb-2">
+                  <Image className="w-5 h-5" />
+                  <Film className="w-5 h-5" />
+                </div>
+                <p>Upload Image or Video</p>
                 <p className="text-xs mt-2">Click to browse...</p>
               </div>
             )}
-            <input 
-                type="file" 
-                accept="image/*" 
-                onChange={handleImageUpload} 
+            <input
+                type="file"
+                accept="image/*,video/mp4,video/quicktime,video/webm,video/x-m4v"
+                onChange={handleMediaUpload}
                 className="absolute inset-0 opacity-0 cursor-pointer"
             />
           </div>
+
+          {/* Media type indicator */}
+          {editedPost.imageUrl && (
+            <div className="flex items-center gap-2 mb-4 text-sm text-stone-500">
+              {isVideo ? (
+                <>
+                  <Film className="w-4 h-4" />
+                  <span>Video</span>
+                </>
+              ) : (
+                <>
+                  <Image className="w-4 h-4" />
+                  <span>Image</span>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Upload error message */}
+          {uploadError && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
+              {uploadError}
+            </div>
+          )}
 
           <div className="space-y-4">
             <div>

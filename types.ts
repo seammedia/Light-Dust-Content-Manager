@@ -29,12 +29,15 @@ export interface GmailSettings {
   email: string;
 }
 
+export type MediaType = 'image' | 'video';
+
 export interface Post {
   id: string;
   client_id: string;
   title: string;
   imageDescription: string;
-  imageUrl?: string; // URL or base64
+  imageUrl?: string; // URL or base64 - used for both images and videos
+  mediaType?: MediaType; // Type of media: 'image' or 'video'
   status: 'Draft' | 'Generated' | 'For Approval' | 'Approved' | 'Posted';
   generatedCaption?: string;
   generatedHashtags?: string[];

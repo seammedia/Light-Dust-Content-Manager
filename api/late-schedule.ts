@@ -11,6 +11,7 @@ interface SchedulePostRequest {
   platforms: { platform: string; accountId: string }[];
   content: string;
   mediaUrls?: string[];
+  mediaType?: 'image' | 'video'; // Media type for the post
   scheduledFor: string;
   timezone?: string;
 }
@@ -28,7 +29,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { platforms, content, mediaUrls, scheduledFor, timezone } = req.body as SchedulePostRequest;
+    const { platforms, content, mediaUrls, mediaType, scheduledFor, timezone } = req.body as SchedulePostRequest;
 
     // Validate required fields
     if (!platforms || !content || !scheduledFor) {
@@ -58,8 +59,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Filter out base64 data URLs as Late API needs public URLs
       const publicUrls = mediaUrls.filter(url => !url.startsWith('data:'));
       if (publicUrls.length > 0) {
+        // Use the provided mediaType, or default to 'image'
+        const type = mediaType || 'image';
         requestBody.mediaItems = publicUrls.map(url => ({
-          type: 'image',
+          type: type,
           url: url,
         }));
       }

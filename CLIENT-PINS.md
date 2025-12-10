@@ -32,6 +32,17 @@ Before these PINs will work, you MUST run the SQL migration in Supabase!
 - Access: Abercrombie Ridge content only
 - Brand: Premium vineyard and winery
 
+### Mediterranean Blu Spritz
+- PIN: `98765`
+- Access: Mediterranean Blu Spritz content only
+- Brand: Mediterranean-inspired spritz beverages
+
+### Washco Express
+- PIN: `4729`
+- Access: Washco Express content only
+- Brand: Car wash services
+- Contact: Sal (sally@cwsa.com.au)
+
 ---
 
 ## Adding New Clients

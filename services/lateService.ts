@@ -13,6 +13,7 @@ export interface SchedulePostParams {
   platforms: { platform: string; accountId: string }[];
   content: string;
   mediaUrls?: string[];
+  mediaType?: 'image' | 'video'; // Type of media being posted
   scheduledFor: string; // ISO 8601 format
 }
 
@@ -58,6 +59,7 @@ export const schedulePost = async (params: SchedulePostParams): Promise<{ id: st
       platforms: params.platforms,
       content: params.content,
       mediaUrls: params.mediaUrls || [],
+      mediaType: params.mediaType || 'image',
       scheduledFor: params.scheduledFor,
     }),
   });

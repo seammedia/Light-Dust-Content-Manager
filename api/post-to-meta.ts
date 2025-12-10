@@ -10,6 +10,7 @@ interface PostToMetaRequest {
   postId: string;
   platform: 'facebook' | 'instagram';
   imageUrl?: string;
+  mediaType?: 'image' | 'video'; // Type of media being posted
   caption: string;
   scheduledTime?: string;
 }
@@ -24,13 +25,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { clientId, postId, platform, imageUrl, caption, scheduledTime } =
+    const { clientId, postId, platform, imageUrl, mediaType, caption, scheduledTime } =
       req.body as PostToMetaRequest;
 
     // Validate required fields
     if (!clientId || !postId || !platform || !caption) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
+
+    // Determine media type from URL if not explicitly provided
+    const isVideo = mediaType === 'video' || (imageUrl ? (
+      imageUrl.includes('.mp4') ||
+      imageUrl.includes('.mov') ||
+      imageUrl.includes('.webm')
+    ) : false);
 
     // Import Supabase (server-side)
     const { createClient } = await import('@supabase/supabase-js');
@@ -62,14 +70,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         client.meta_access_token,
         imageUrl,
         caption,
-        scheduledTime
+        scheduledTime,
+        isVideo
       );
     } else {
       result = await postToInstagram(
         client.instagram_account_id,
         client.meta_access_token,
         imageUrl!,
-        caption
+        caption,
+        isVideo
       );
     }
 
@@ -101,24 +111,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 }
 
 /**
- * Post to Facebook Page
+ * Post to Facebook Page (supports both images and videos)
  */
 async function postToFacebook(
   pageId: string,
   accessToken: string,
-  imageUrl: string | undefined,
+  mediaUrl: string | undefined,
   caption: string,
-  scheduledTime?: string
+  scheduledTime?: string,
+  isVideo?: boolean
 ): Promise<{ success: boolean; metaPostId?: string; error?: string }> {
   try {
-    const url = `${GRAPH_API_BASE}/${pageId}/photos`;
+    // Use different endpoints for photos vs videos
+    const endpoint = isVideo ? 'videos' : 'photos';
+    const url = `${GRAPH_API_BASE}/${pageId}/${endpoint}`;
 
     const formData = new URLSearchParams();
-    formData.append('message', caption);
+    formData.append(isVideo ? 'description' : 'message', caption);
     formData.append('access_token', accessToken);
 
-    if (imageUrl) {
-      formData.append('url', imageUrl);
+    if (mediaUrl) {
+      // Facebook uses 'url' for photos and 'file_url' for videos
+      formData.append(isVideo ? 'file_url' : 'url', mediaUrl);
     }
 
     // Schedule post if future date
@@ -159,26 +173,34 @@ async function postToFacebook(
 }
 
 /**
- * Post to Instagram Business Account
+ * Post to Instagram Business Account (supports both images and videos/reels)
  */
 async function postToInstagram(
   instagramAccountId: string,
   accessToken: string,
-  imageUrl: string,
-  caption: string
+  mediaUrl: string,
+  caption: string,
+  isVideo?: boolean
 ): Promise<{ success: boolean; metaPostId?: string; error?: string }> {
   try {
-    if (!imageUrl) {
-      throw new Error('Instagram posts require an image URL');
+    if (!mediaUrl) {
+      throw new Error('Instagram posts require a media URL');
     }
 
     // Step 1: Create media container
     const containerUrl = `${GRAPH_API_BASE}/${instagramAccountId}/media`;
     const containerParams = new URLSearchParams({
-      image_url: imageUrl,
       caption: caption,
       access_token: accessToken,
     });
+
+    // Use different parameters for image vs video
+    if (isVideo) {
+      containerParams.append('video_url', mediaUrl);
+      containerParams.append('media_type', 'REELS'); // Instagram videos are posted as Reels
+    } else {
+      containerParams.append('image_url', mediaUrl);
+    }
 
     const containerResponse = await fetch(`${containerUrl}?${containerParams}`, {
       method: 'POST',
@@ -188,6 +210,37 @@ async function postToInstagram(
 
     if (!containerResponse.ok) {
       throw new Error(containerData.error?.message || 'Instagram container creation error');
+    }
+
+    // For videos, we need to wait for processing to complete
+    if (isVideo) {
+      // Poll for container status until ready (max 60 seconds)
+      let attempts = 0;
+      const maxAttempts = 30;
+      while (attempts < maxAttempts) {
+        const statusUrl = `${GRAPH_API_BASE}/${containerData.id}`;
+        const statusParams = new URLSearchParams({
+          fields: 'status_code',
+          access_token: accessToken,
+        });
+
+        const statusResponse = await fetch(`${statusUrl}?${statusParams}`);
+        const statusData = await statusResponse.json();
+
+        if (statusData.status_code === 'FINISHED') {
+          break;
+        } else if (statusData.status_code === 'ERROR') {
+          throw new Error('Video processing failed on Instagram');
+        }
+
+        // Wait 2 seconds before checking again
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        attempts++;
+      }
+
+      if (attempts >= maxAttempts) {
+        throw new Error('Video processing timed out');
+      }
     }
 
     // Step 2: Publish the container
