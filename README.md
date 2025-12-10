@@ -8,7 +8,8 @@ A multi-client social content management platform where agencies can manage mult
 - 🔐 **Master Account** - Agency access to switch between all clients
 - 📅 **Content Calendar** - Table view and visual calendar view
 - 🗓️ **Month Filtering** - Quick navigation between months
-- 🖼️ **Image Upload** - Upload post images with built-in date picker
+- 🖼️ **Image & Video Upload** - Upload images or videos (mp4, mov, webm) with built-in date picker
+- 🎬 **Video Scheduling** - Schedule videos to Instagram (as Reels), Facebook, TikTok and more
 - 💬 **Client Comments** - Add notes and feedback
 - ✅ **Approval Workflow** - Track post status (Draft → For Approval → Approved → Posted)
 - 🔄 **Real-time Updates** - Changes sync instantly across all users
@@ -148,13 +149,13 @@ Add `&test=true` to bypass the 20-minute delay:
 https://seam-media-content-manager.vercel.app/api/notify-notes?secret=YOUR_CRON_SECRET&test=true
 ```
 
-### 6. Supabase Storage Setup (For Images)
+### 6. Supabase Storage Setup (For Images & Videos)
 
-Images must be stored as public URLs for Late API to access them.
+Media files must be stored as public URLs for Late API to access them.
 
 1. Go to Supabase Dashboard → **Storage**
 2. Click **"New bucket"**
-3. Name it: **`post-images`**
+3. Name it: **`post-images`** (used for both images and videos)
 4. **Enable "Public bucket"** (toggle ON)
 5. Add storage policy:
    - Policy name: `Allow public uploads`
@@ -162,14 +163,21 @@ Images must be stored as public URLs for Late API to access them.
    - Target roles: anon, authenticated
    - Policy definition: `true`
 
-**Auto-Cropping:**
+**Image Auto-Cropping:**
 - Images automatically cropped to fit Instagram's aspect ratio (0.75 to 1.91)
 - Too tall images → cropped to 4:5 portrait
 - Too wide images → cropped to 1.91:1 landscape
 - Crop is centered on original image
 
+**Video Support:**
+- Videos are uploaded as-is (no cropping/processing)
+- Supported formats: MP4, MOV, WebM, M4V
+- Max file size: 500MB
+- Instagram videos are posted as Reels
+- Facebook videos posted to Page timeline
+
 **Auto-Cleanup:**
-- Images automatically deleted 60 days after post is marked "Posted"
+- Media files automatically deleted 60 days after post is marked "Posted"
 - Runs daily via Vercel Cron (requires Pro plan) or manual trigger
 - Manual cleanup: Visit `/api/cleanup-storage`
 
@@ -429,6 +437,7 @@ posts
 ├── status (text)
 ├── image_description (text)
 ├── image_url (text)
+├── media_type (text) - 'image' or 'video'
 ├── generated_caption (text)
 ├── generated_hashtags (jsonb)
 └── notes (text)
@@ -503,10 +512,12 @@ The content manager integrates with [Late API](https://getlate.dev) for scheduli
 - API key stays secure on server-side
 - Vercel functions proxy requests to Late
 
-**Image Requirements:**
+**Media Requirements:**
 - Must be publicly accessible URLs (not base64)
-- Instagram aspect ratio: 0.75 to 1.91 (4:5 portrait to 1.91:1 landscape)
-- Auto-cropping handles non-compliant images
+- **Images:** Instagram aspect ratio 0.75 to 1.91 (auto-cropped)
+- **Videos:** MP4, MOV, WebM supported (max 500MB)
+- Instagram videos are posted as Reels
+- Facebook videos posted to Page timeline
 
 ### Troubleshooting Late API
 
@@ -528,7 +539,21 @@ The content manager integrates with [Late API](https://getlate.dev) for scheduli
 
 ## Development History
 
-### Recent Updates (2025-12-03)
+### Recent Updates (2025-12-10)
+
+1. **Video Upload & Scheduling Support** - Full video support for social media posts
+   - Upload videos (MP4, MOV, WebM, M4V) up to 500MB
+   - Videos displayed with play controls in editor and preview
+   - Video indicator badges in table and calendar views
+   - Instagram videos automatically posted as Reels
+   - Facebook videos posted to Page timeline
+   - Late API integration passes correct media type ('image' or 'video')
+   - Database `media_type` column tracks content type
+   - Run `add-video-support-schema.sql` in Supabase to enable
+
+2. **New Client: Washco Express** - Added to CLIENT-PINS.md
+
+### Updates (2025-12-03)
 
 1. **Client Notes Email Notifications** - Get email alerts when clients add feedback to posts
    - Uses Resend for email delivery (free tier: 3,000 emails/month)
@@ -604,6 +629,7 @@ See `DEPLOYMENT.md` for detailed technical documentation of all improvements.
 - `add-abercrombie-ridge.sql` - Example of adding a new client
 - `add-meta-integration-schema.sql` - Meta API integration schema
 - `add-notes-tracking.sql` - Client notes notification tracking columns
+- `add-video-support-schema.sql` - Video upload support (adds media_type column)
 
 ### Source Code
 - `App.tsx` - Main application with scheduling logic
@@ -729,14 +755,14 @@ Potential features to add:
 - [x] ~~Auto image cropping for Instagram~~ ✅ **COMPLETED** - Aspect ratio 0.75-1.91
 - [x] ~~Storage cleanup~~ ✅ **COMPLETED** - Auto-delete after 60 days
 - [x] ~~Client notes notifications~~ ✅ **COMPLETED** - Resend + cron-job.org
+- [x] ~~TikTok/Reels video support~~ ✅ **COMPLETED** - Full video upload and scheduling
 - [ ] Refresh token for Gmail (avoid re-auth every hour)
 - [ ] Client-specific branding/themes
 - [ ] Usage analytics per client
 - [ ] Export to PDF/Excel
 - [ ] Comment threads and @mentions
-- [ ] File attachments beyond images
+- [ ] File attachments beyond images/videos
 - [ ] Mobile app
-- [ ] TikTok/Reels video support
 
 ## License
 
