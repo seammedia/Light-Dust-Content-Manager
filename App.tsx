@@ -5,9 +5,10 @@ import { MetaSettings } from './src/components/MetaSettings';
 import { ClientManagement } from './components/ClientManagement';
 import { GeneratePostsModal } from './components/GeneratePostsModal';
 import { supabase } from './services/supabaseClient';
-import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles, Mail, Clock, Send, FileText, Image, Film, X, LayoutGrid } from 'lucide-react';
+import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles, Mail, Clock, Send, FileText, Image, Film, X, LayoutGrid, HardDrive } from 'lucide-react';
 import { generateCaptionFromImage, updateFromFeedback, generateImageFromFeedback } from './services/geminiService';
 import { isGmailConnected, getConnectedEmail, connectGmail, sendEmail, clearGmailSettings } from './services/gmailService';
+import { isDriveConnected, getDriveEmail, connectDrive, clearDriveSettings } from './services/driveService';
 import { isLateConfigured, getProfiles, schedulePost, LateProfile } from './services/lateService';
 import { uploadMedia, uploadImage, detectMediaType } from './services/storageService';
 
@@ -482,6 +483,8 @@ export default function App() {
   const [uploadingImageId, setUploadingImageId] = useState<string | null>(null);
   const [gmailConnected, setGmailConnected] = useState(isGmailConnected());
   const [gmailEmail, setGmailEmail] = useState(getConnectedEmail());
+  const [driveConnected, setDriveConnected] = useState(isDriveConnected());
+  const [driveEmail, setDriveEmail] = useState(getDriveEmail());
   const [sendingEmail, setSendingEmail] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [emailTo, setEmailTo] = useState('');
@@ -780,6 +783,29 @@ export default function App() {
       clearGmailSettings();
       setGmailConnected(false);
       setGmailEmail(null);
+    }
+  };
+
+  const handleConnectDrive = async () => {
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      alert('Google Client ID not configured. Please add VITE_GOOGLE_CLIENT_ID to environment variables.');
+      return;
+    }
+    try {
+      const settings = await connectDrive(clientId);
+      setDriveConnected(true);
+      setDriveEmail(settings.email);
+    } catch (error: any) {
+      alert(error.message || 'Failed to connect Google Drive');
+    }
+  };
+
+  const handleDisconnectDrive = () => {
+    if (confirm('Disconnect Google Drive account?')) {
+      clearDriveSettings();
+      setDriveConnected(false);
+      setDriveEmail(null);
     }
   };
 
@@ -2336,9 +2362,30 @@ Example:
         />
       )}
 
-      {/* Gmail Settings - floating button for master account */}
+      {/* Connection Settings - floating buttons for master account */}
       {isMasterAccount && isAuthenticated && (
-        <div className="fixed bottom-4 right-4 z-40">
+        <div className="fixed bottom-4 right-4 z-40 flex flex-col gap-2">
+          {/* Drive Connection */}
+          {driveConnected ? (
+            <button
+              onClick={handleDisconnectDrive}
+              className="bg-white border border-stone-300 shadow-lg rounded-full px-4 py-2 text-sm flex items-center gap-2 hover:bg-stone-50 transition-colors"
+              title={`Drive connected as ${driveEmail}`}
+            >
+              <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+              <HardDrive className="w-4 h-4 text-blue-600" />
+              Drive Connected
+            </button>
+          ) : (
+            <button
+              onClick={handleConnectDrive}
+              className="bg-blue-600 text-white shadow-lg rounded-full px-4 py-2 text-sm flex items-center gap-2 hover:bg-blue-700 transition-colors"
+            >
+              <HardDrive className="w-4 h-4" />
+              Connect Drive
+            </button>
+          )}
+          {/* Gmail Connection */}
           {gmailConnected ? (
             <button
               onClick={handleDisconnectGmail}

@@ -1,14 +1,42 @@
-import { useState } from 'react';
-import { X, Sparkles, Loader2, Calendar, Hash } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, Sparkles, Loader2, Calendar, Hash, HardDrive, CheckCircle2 } from 'lucide-react';
 import { Client } from '../types';
 import { supabase } from '../services/supabaseClient';
 import { v4 as uuidv4 } from 'uuid';
+import {
+  isDriveConnected,
+  extractFolderIdFromUrl,
+  getRandomImagesFromFolder,
+  getFileAsBase64,
+  DriveFile
+} from '../services/driveService';
+import { uploadImage } from '../services/storageService';
 
 interface GeneratePostsModalProps {
   client: Client;
   onClose: () => void;
   onPostsGenerated: () => void;
 }
+
+// Extract Google Drive folder URL from client notes
+const extractDriveFolderUrl = (notes: string): string | null => {
+  if (!notes) return null;
+
+  // Match various Google Drive folder URL patterns
+  const patterns = [
+    /https:\/\/drive\.google\.com\/drive\/folders\/[a-zA-Z0-9_-]+(\?[^\s]*)?\b/,
+    /https:\/\/drive\.google\.com\/drive\/u\/\d+\/folders\/[a-zA-Z0-9_-]+(\?[^\s]*)?\b/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = notes.match(pattern);
+    if (match) {
+      return match[0];
+    }
+  }
+
+  return null;
+};
 
 // Generate content ideas using Gemini
 const generateContentIdeas = async (
@@ -114,6 +142,24 @@ export function GeneratePostsModal({ client, onClose, onPostsGenerated }: Genera
   const [progress, setProgress] = useState('');
   const [error, setError] = useState<string | null>(null);
 
+  // Drive integration state
+  const [includeImages, setIncludeImages] = useState(false);
+  const [driveConnected] = useState(isDriveConnected());
+  const [driveFolderId, setDriveFolderId] = useState<string | null>(null);
+
+  // Check for Drive folder URL in client notes on mount
+  useEffect(() => {
+    const folderUrl = extractDriveFolderUrl(client.client_notes || '');
+    if (folderUrl) {
+      const folderId = extractFolderIdFromUrl(folderUrl);
+      setDriveFolderId(folderId);
+      // Auto-enable images if Drive is connected and folder is found
+      if (driveConnected && folderId) {
+        setIncludeImages(true);
+      }
+    }
+  }, [client.client_notes, driveConnected]);
+
   // Calculate post dates based on frequency
   const calculateDates = (): string[] => {
     const dates: string[] = [];
@@ -163,6 +209,19 @@ export function GeneratePostsModal({ client, onClose, onPostsGenerated }: Genera
         throw new Error('No content ideas generated');
       }
 
+      // Fetch images from Google Drive if enabled
+      let driveImages: DriveFile[] = [];
+      if (includeImages && driveFolderId && driveConnected) {
+        setProgress('Fetching images from Google Drive...');
+        try {
+          driveImages = await getRandomImagesFromFolder(driveFolderId, numberOfPosts);
+        } catch (driveError: any) {
+          console.error('Drive fetch error:', driveError);
+          // Continue without images if Drive fetch fails
+          setProgress('Could not fetch Drive images, continuing without...');
+        }
+      }
+
       // Calculate dates
       const dates = calculateDates();
 
@@ -174,20 +233,38 @@ export function GeneratePostsModal({ client, onClose, onPostsGenerated }: Genera
       for (let i = 0; i < contentIdeas.length; i++) {
         const idea = contentIdeas[i];
         const date = dates[i] || dates[dates.length - 1];
+        const postId = uuidv4();
+
+        let imageUrl = '';
+
+        // If we have Drive images, upload them to Supabase
+        if (driveImages[i]) {
+          setProgress(`Uploading image ${i + 1} of ${Math.min(driveImages.length, numberOfPosts)}...`);
+          try {
+            const { base64, mimeType } = await getFileAsBase64(driveImages[i].id);
+            const dataUrl = `data:${mimeType};base64,${base64}`;
+            imageUrl = await uploadImage(dataUrl, client.id, postId);
+          } catch (uploadError) {
+            console.error('Image upload error:', uploadError);
+            // Continue without this image
+          }
+        }
 
         postsToCreate.push({
-          id: uuidv4(),
+          id: postId,
           client_id: client.id,
           title: `Post ${i + 1}`,
           date: date,
           status: 'Generated',
           image_description: '',
-          image_url: '',
+          image_url: imageUrl,
           generated_caption: idea.caption,
           generated_hashtags: idea.hashtags,
           notes: '',
         });
       }
+
+      setProgress('Saving posts to database...');
 
       // Insert all posts
       const { error: insertError } = await supabase
@@ -215,6 +292,9 @@ export function GeneratePostsModal({ client, onClose, onPostsGenerated }: Genera
 
   // Preview dates
   const previewDates = calculateDates();
+
+  // Determine if images can be included
+  const canIncludeImages = driveConnected && driveFolderId;
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -307,6 +387,48 @@ export function GeneratePostsModal({ client, onClose, onPostsGenerated }: Genera
             </select>
           </div>
 
+          {/* Google Drive Images Option */}
+          <div className={`rounded-lg p-4 ${canIncludeImages ? 'bg-blue-50 border border-blue-200' : 'bg-stone-50 border border-stone-200'}`}>
+            <div className="flex items-start gap-3">
+              <div className={`p-2 rounded-lg ${canIncludeImages ? 'bg-blue-100' : 'bg-stone-200'}`}>
+                <HardDrive className={`w-4 h-4 ${canIncludeImages ? 'text-blue-600' : 'text-stone-400'}`} />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <h4 className={`text-sm font-medium ${canIncludeImages ? 'text-blue-800' : 'text-stone-500'}`}>
+                    Include Images from Google Drive
+                  </h4>
+                  {canIncludeImages && (
+                    <CheckCircle2 className="w-4 h-4 text-green-500" />
+                  )}
+                </div>
+                {canIncludeImages ? (
+                  <>
+                    <p className="text-xs text-blue-600 mt-1">
+                      Drive folder detected in client notes. Random images will be selected for each post.
+                    </p>
+                    <label className="flex items-center gap-2 mt-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={includeImages}
+                        onChange={(e) => setIncludeImages(e.target.checked)}
+                        disabled={generating}
+                        className="w-4 h-4 text-blue-600 border-blue-300 rounded focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-blue-700">Attach random images from Drive folder</span>
+                    </label>
+                  </>
+                ) : (
+                  <p className="text-xs text-stone-500 mt-1">
+                    {!driveConnected
+                      ? 'Connect Google Drive (bottom right) to enable this feature.'
+                      : 'No Drive folder URL found in client notes. Add a Google Drive folder link to enable.'}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
           {/* Preview Dates */}
           <div className="bg-stone-50 rounded-lg p-4">
             <h4 className="text-sm font-medium text-stone-700 mb-2 flex items-center gap-2">
@@ -337,10 +459,15 @@ export function GeneratePostsModal({ client, onClose, onPostsGenerated }: Genera
               <li>• {numberOfPosts} unique post captions tailored to {client.brand_name}</li>
               <li>• 4-5 relevant hashtags per post</li>
               <li>• Posts scheduled on your selected dates</li>
+              {includeImages && canIncludeImages && (
+                <li>• Random images from Google Drive attached to each post</li>
+              )}
             </ul>
-            <p className="mt-2 text-blue-600 text-xs">
-              Note: Images can be added manually or generated separately after creation.
-            </p>
+            {!includeImages && (
+              <p className="mt-2 text-blue-600 text-xs">
+                Note: Images can be added manually or generated separately after creation.
+              </p>
+            )}
           </div>
 
           {/* Error */}

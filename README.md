@@ -20,6 +20,7 @@ A multi-client social content management platform where agencies can manage mult
 - ✨ **AI Caption Generation** - Generate captions and hashtags from images using Gemini AI (master account only)
 - 🚀 **Bulk Post Generation** - Generate multiple posts at once with AI-created captions and hashtags
 - 📧 **Gmail Integration** - Send review notification emails directly from the dashboard
+- 📁 **Google Drive Integration** - Fetch images from client's Drive folders for post generation
 - 🏷️ **Editable Hashtags** - Click to edit hashtags inline
 - 📅 **Late API Scheduling** - Schedule approved posts to Instagram, Facebook, TikTok and more
 - 🖼️ **Auto Image Cropping** - Automatically crops images to fit Instagram's aspect ratio requirements
@@ -79,7 +80,26 @@ A multi-client social content management platform where agencies can manage mult
 - Staff need to click "Connect Gmail" to re-authenticate when expired
 - Recommended: Use a shared Gmail account (e.g., `sales@seammedia.com.au`) that staff can authenticate with
 
-### 4. Late API Setup (For Social Media Scheduling)
+### 4. Google Drive API Setup (For Image Sourcing)
+
+The same Google OAuth client used for Gmail also enables Google Drive integration for fetching images from client folders.
+
+**Setup:**
+1. In [Google Cloud Console](https://console.cloud.google.com/), enable the **Google Drive API** (APIs & Services → Library)
+2. Your existing OAuth Client ID will work for both Gmail and Drive (same `VITE_GOOGLE_CLIENT_ID`)
+3. Add Drive scope is automatically included
+
+**Usage:**
+1. Click "Connect Drive" button (bottom-right, blue button) when logged in as master account
+2. In Client Notes, add a Google Drive folder URL (e.g., `https://drive.google.com/drive/folders/xxxxx`)
+3. When generating posts, the "Include Images from Google Drive" option will be auto-enabled
+4. Random images from the folder will be attached to generated posts
+
+**Folder Sharing:**
+- The Drive folder must be shared with the connected Google account OR shared publicly
+- Images are downloaded and re-uploaded to Supabase Storage for social media compatibility
+
+### 5. Late API Setup (For Social Media Scheduling)
 
 1. Go to [Late](https://getlate.dev) and create an account
 2. Connect your social media accounts (Instagram, Facebook, TikTok, etc.) under **Connections**
@@ -96,11 +116,11 @@ A multi-client social content management platform where agencies can manage mult
 - Free tier: 10 posts/month, 2 profiles
 - Paid: $19/mo (120 posts) or $49/mo (unlimited)
 
-### 5. Client Notes Email Notifications (Resend + Cron)
+### 6. Client Notes Email Notifications (Resend + Cron)
 
 Get email alerts at `contact@seammedia.com.au` when clients add notes/feedback to posts.
 
-#### 5.1 Supabase Setup
+#### 6.1 Supabase Setup
 
 Run `add-notes-tracking.sql` in Supabase SQL Editor to add tracking columns:
 
@@ -109,7 +129,7 @@ Run `add-notes-tracking.sql` in Supabase SQL Editor to add tracking columns:
 -- Creates trigger to track when notes are modified
 ```
 
-#### 5.2 Resend Setup (Email Service)
+#### 6.2 Resend Setup (Email Service)
 
 1. Go to [Resend](https://resend.com) and create a free account (3,000 emails/month free)
 2. Add and verify your domain:
@@ -123,7 +143,7 @@ Run `add-notes-tracking.sql` in Supabase SQL Editor to add tracking columns:
    - Permission: `Sending access`
 4. Add to Vercel: `RESEND_API_KEY=re_xxxxx`
 
-#### 5.3 External Cron Setup (cron-job.org)
+#### 6.3 External Cron Setup (cron-job.org)
 
 Vercel's free plan only allows daily cron jobs. Use [cron-job.org](https://cron-job.org) (free) for more frequent checks:
 
@@ -135,7 +155,7 @@ Vercel's free plan only allows daily cron jobs. Use [cron-job.org](https://cron-
    - **Request Method**: GET
 3. Add `CRON_SECRET` to Vercel environment variables (any random string)
 
-#### 5.4 How It Works
+#### 6.4 How It Works
 
 1. Client adds/edits notes on a post
 2. Database trigger sets `notes_updated_at` timestamp and `notes_notified = false`
@@ -144,14 +164,14 @@ Vercel's free plan only allows daily cron jobs. Use [cron-job.org](https://cron-
 5. Sends email to `contact@seammedia.com.au` with all new notes grouped by client
 6. Marks posts as `notes_notified = true`
 
-#### 5.5 Testing
+#### 6.5 Testing
 
 Add `&test=true` to bypass the 20-minute delay:
 ```
 https://seam-media-content-manager.vercel.app/api/notify-notes?secret=YOUR_CRON_SECRET&test=true
 ```
 
-### 6. Supabase Storage Setup (For Images & Videos)
+### 7. Supabase Storage Setup (For Images & Videos)
 
 Media files must be stored as public URLs for Late API to access them.
 
@@ -183,7 +203,7 @@ Media files must be stored as public URLs for Late API to access them.
 - Runs daily via Vercel Cron (requires Pro plan) or manual trigger
 - Manual cleanup: Visit `/api/cleanup-storage`
 
-### 7. Vercel Deployment
+### 8. Vercel Deployment
 
 1. Push your code to GitHub
 2. Go to [Vercel](https://vercel.com) and import your repository
@@ -203,7 +223,7 @@ Media files must be stored as public URLs for Late API to access them.
 
 4. Deploy your application
 
-### 8. Local Development
+### 9. Local Development
 
 1. Clone the repository:
    ```bash
@@ -543,7 +563,15 @@ The content manager integrates with [Late API](https://getlate.dev) for scheduli
 
 ### Recent Updates (2025-12-11)
 
-1. **Bulk Post Generation (AI)** - Generate multiple posts at once with AI
+1. **Google Drive Integration** - Fetch images from client's Google Drive folders
+   - Connect Google Drive via floating button (bottom-right, blue button)
+   - Add Drive folder URL to Client Notes section
+   - When generating posts, option to auto-attach random images from Drive folder
+   - Images downloaded from Drive and uploaded to Supabase Storage
+   - Uses same Google OAuth client as Gmail integration
+   - Auto-enables image option when Drive folder detected in client notes
+
+2. **Bulk Post Generation (AI)** - Generate multiple posts at once with AI
    - Click "Generate Posts" button (agency-only, purple gradient button)
    - Select number of posts (3, 5, 7, 10, or custom)
    - Pick start date and posting frequency (daily, every 2 days, every 3 days, weekly)
@@ -667,6 +695,7 @@ See `DEPLOYMENT.md` for detailed technical documentation of all improvements.
 - `components/GeneratePostsModal.tsx` - Bulk AI post generation modal (agency-only)
 - `services/geminiService.ts` - AI caption generation and feedback processing
 - `services/gmailService.ts` - Gmail OAuth and email sending
+- `services/driveService.ts` - Google Drive OAuth and file fetching
 - `services/lateService.ts` - Late API integration for social scheduling
 - `services/storageService.ts` - Supabase Storage upload with auto-cropping
 - `src/services/metaService.ts` - Meta API service (legacy)
@@ -787,6 +816,7 @@ Potential features to add:
 - [x] ~~Storage cleanup~~ ✅ **COMPLETED** - Auto-delete after 60 days
 - [x] ~~Client notes notifications~~ ✅ **COMPLETED** - Resend + cron-job.org
 - [x] ~~TikTok/Reels video support~~ ✅ **COMPLETED** - Full video upload and scheduling
+- [x] ~~Google Drive integration~~ ✅ **COMPLETED** - Fetch images from client Drive folders
 - [ ] Refresh token for Gmail (avoid re-auth every hour)
 - [ ] Client-specific branding/themes
 - [ ] Usage analytics per client
