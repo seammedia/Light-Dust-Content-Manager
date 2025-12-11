@@ -893,8 +893,18 @@ export default function App() {
         });
 
         try {
+          // Detect media type from URL if not set in database
+          let mediaType = post.mediaType || 'image';
+          if (post.imageUrl) {
+            const urlLower = post.imageUrl.toLowerCase();
+            if (urlLower.includes('.mp4') || urlLower.includes('.mov') || urlLower.includes('.webm') || urlLower.includes('.m4v')) {
+              mediaType = 'video';
+            }
+          }
+
           console.log(`Scheduling post ${post.id}:`, {
-            mediaType: post.mediaType,
+            mediaType: mediaType,
+            detectedFromUrl: mediaType !== post.mediaType,
             imageUrl: post.imageUrl?.substring(0, 100),
             platforms: platforms.map(p => p.platform),
           });
@@ -903,7 +913,7 @@ export default function App() {
             platforms,
             content,
             mediaUrls: post.imageUrl ? [post.imageUrl] : [],
-            mediaType: post.mediaType || 'image',
+            mediaType: mediaType,
             scheduledFor,
           });
           successCount++;
