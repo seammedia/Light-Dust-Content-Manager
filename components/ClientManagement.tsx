@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Info, Sparkles, Check, Clock, AlertTriangle, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Sparkles, Check, Clock, AlertTriangle, Loader2 } from 'lucide-react';
 import { Client, Post } from '../types';
 import { supabase } from '../services/supabaseClient';
 
 interface ClientManagementProps {
   clients: Client[];
+  onClientSelect: (client: Client) => void;
 }
 
 // Weekly status types
@@ -144,7 +145,7 @@ const getWeeklyStatusInfo = (posts: Post[], today: Date): WeeklyStatusInfo => {
   };
 };
 
-export function ClientManagement({ clients }: ClientManagementProps) {
+export function ClientManagement({ clients, onClientSelect }: ClientManagementProps) {
   const [currentWeekStart, setCurrentWeekStart] = useState(() => getMonday(new Date()));
   const [allPosts, setAllPosts] = useState<Record<string, Post[]>>({});
   const [loading, setLoading] = useState(true);
@@ -204,7 +205,8 @@ export function ClientManagement({ clients }: ClientManagementProps) {
   }, [currentWeekStart]);
 
   const weekDates = getWeekDates(currentWeekStart);
-  const dayNames = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+  // Shorter day names
+  const dayNames = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
   // Navigation
   const goToPreviousWeek = () => {
@@ -295,22 +297,22 @@ export function ClientManagement({ clients }: ClientManagementProps) {
         <table className="w-full">
           <thead>
             <tr className="bg-stone-50 border-b border-stone-200">
-              <th className="text-left py-3 px-4 text-xs font-semibold text-stone-500 uppercase tracking-wider w-56">
-                Client Name
+              <th className="text-left py-3 px-6 text-xs font-semibold text-stone-500 uppercase tracking-wider w-72">
+                Client
               </th>
-              <th className="text-center py-3 px-4 text-xs font-semibold text-stone-500 uppercase tracking-wider" colSpan={7}>
+              <th className="text-center py-3 px-4 text-xs font-semibold text-stone-500 uppercase tracking-wider w-64">
                 <div className="flex justify-between px-2">
                   {weekDates.map((date, idx) => {
                     const dayIsToday = isToday(date);
                     return (
                       <div
                         key={idx}
-                        className={`flex flex-col items-center min-w-[60px] py-1 px-2 rounded-lg ${
+                        className={`flex flex-col items-center min-w-[32px] py-1 px-1 rounded-lg ${
                           dayIsToday ? 'bg-brand-green text-white' : ''
                         }`}
                       >
-                        <span className={`text-xs ${dayIsToday ? 'text-white' : 'text-stone-500'}`}>{dayNames[idx]}</span>
-                        <span className={`text-lg font-bold ${dayIsToday ? 'text-white' : 'text-stone-700'}`}>
+                        <span className={`text-[10px] ${dayIsToday ? 'text-white' : 'text-stone-400'}`}>{dayNames[idx]}</span>
+                        <span className={`text-sm font-bold ${dayIsToday ? 'text-white' : 'text-stone-600'}`}>
                           {date.getDate()}
                         </span>
                       </div>
@@ -318,18 +320,21 @@ export function ClientManagement({ clients }: ClientManagementProps) {
                   })}
                 </div>
               </th>
+              <th className="text-center py-3 px-4 text-xs font-semibold text-stone-500 uppercase tracking-wider">
+                Status
+              </th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={2} className="text-center py-12 text-stone-400">
+                <td colSpan={3} className="text-center py-12 text-stone-400">
                   Loading client data...
                 </td>
               </tr>
             ) : displayClients.length === 0 ? (
               <tr>
-                <td colSpan={2} className="text-center py-12 text-stone-400">
+                <td colSpan={3} className="text-center py-12 text-stone-400">
                   No clients found
                 </td>
               </tr>
@@ -358,34 +363,37 @@ export function ClientManagement({ clients }: ClientManagementProps) {
 
                 return (
                   <tr key={client.id} className="border-b border-stone-100 hover:bg-stone-50/50">
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-full ${avatarColor} flex items-center justify-center text-white text-xs font-bold`}>
+                    <td className="py-4 px-6">
+                      <button
+                        onClick={() => onClientSelect(client)}
+                        className="flex items-center gap-3 text-left hover:opacity-80 transition-opacity group"
+                      >
+                        <div className={`w-10 h-10 rounded-full ${avatarColor} flex items-center justify-center text-white text-sm font-bold shrink-0`}>
                           {initials}
                         </div>
                         <div>
-                          <div className="font-medium text-stone-800">{client.name}</div>
+                          <div className="font-semibold text-stone-800 group-hover:text-brand-green transition-colors whitespace-nowrap">
+                            {client.name}
+                          </div>
                           {client.contact_name && (
-                            <div className="text-xs text-stone-400">{client.contact_name}</div>
+                            <div className="text-sm text-stone-400">{client.contact_name}</div>
                           )}
                         </div>
-                        <button
-                          className="ml-1 text-stone-300 hover:text-stone-500 transition-colors"
-                          title="View client details"
-                        >
-                          <Info className="w-4 h-4" />
-                        </button>
-                      </div>
+                      </button>
                     </td>
-                    <td className="py-3 px-4">
+                    <td className="py-4 px-4">
+                      {/* Empty cell - days are just for reference in header */}
+                    </td>
+                    <td className="py-4 px-4">
                       <div
                         className={`flex items-center justify-center gap-3 py-3 px-6 rounded-lg ${statusInfo.bgColor} ${statusInfo.textColor} transition-all hover:opacity-90 cursor-pointer`}
                         title={`${postCount} post(s) this week`}
+                        onClick={() => onClientSelect(client)}
                       >
                         {statusInfo.icon}
                         <span className="font-semibold">{statusInfo.label}</span>
                         {postCount > 0 && (
-                          <span className={`text-sm ${statusInfo.type === 'awaiting' ? 'text-amber-800' : 'opacity-80'}`}>
+                          <span className={`text-sm ${statusInfo.type === 'awaiting' || statusInfo.type === 'outstanding' ? '' : 'opacity-80'}`}>
                             ({postCount} post{postCount !== 1 ? 's' : ''})
                           </span>
                         )}

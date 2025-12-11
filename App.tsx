@@ -1417,7 +1417,13 @@ export default function App() {
 
           {/* Client Management View (Agency Only) */}
           {isMasterAccount && mainTab === 'clients' ? (
-            <ClientManagement clients={allClients} />
+            <ClientManagement
+              clients={allClients}
+              onClientSelect={(client) => {
+                selectClient(client);
+                setMainTab('content');
+              }}
+            />
           ) : (
           <>
           {/* Month Filter Tabs */}
