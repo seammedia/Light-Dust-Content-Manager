@@ -1133,26 +1133,25 @@ export default function App() {
 
     const newId = crypto.randomUUID();
 
-    // Save to database first
+    // Save to database first - ensure all required fields have values
     const { error } = await supabase
       .from('posts')
       .insert({
         id: newId,
         client_id: currentClient.id,
-        title: post.title,
-        image_description: post.imageDescription,
-        image_url: post.imageUrl,
-        media_type: post.mediaType,
+        title: post.title || 'Untitled',
+        image_description: post.imageDescription || '',
+        image_url: post.imageUrl || null,
+        media_type: post.mediaType || 'image',
         status: 'Draft',
-        generated_caption: post.generatedCaption,
-        generated_hashtags: post.generatedHashtags,
-        date: post.date,
-        notes: ''
+        generated_caption: post.generatedCaption || null,
+        generated_hashtags: post.generatedHashtags || [],
+        date: post.date
       });
 
     if (error) {
       console.error('Error duplicating post:', error);
-      alert('Failed to duplicate post. Please try again.');
+      alert('Failed to duplicate post: ' + error.message);
     }
     // Realtime subscription will automatically refresh the posts list
   };
