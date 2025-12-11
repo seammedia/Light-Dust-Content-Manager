@@ -1,20 +1,22 @@
 import React, { useState } from 'react';
 import { Post, BrandContext, MediaType } from '../types';
-import { Sparkles, Save, Film, Image } from 'lucide-react';
-import { detectMediaType, validateFileSize } from '../services/storageService';
+import { Sparkles, Save, Film, Image, Loader2 } from 'lucide-react';
+import { detectMediaType, validateFileSize, uploadMedia } from '../services/storageService';
 
 interface PostEditorProps {
   post: Post;
   brand: BrandContext;
+  clientId: string;
   onUpdate: (updatedPost: Post) => void;
   onClose: () => void;
 }
 
-export const PostEditor: React.FC<PostEditorProps> = ({ post, onUpdate, onClose }) => {
+export const PostEditor: React.FC<PostEditorProps> = ({ post, clientId, onUpdate, onClose }) => {
   const [editedPost, setEditedPost] = useState<Post>(post);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
-  const handleMediaUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setUploadError(null);
@@ -29,15 +31,21 @@ export const PostEditor: React.FC<PostEditorProps> = ({ post, onUpdate, onClose 
         return;
       }
 
-      const reader = new FileReader();
-      reader.onloadend = () => {
+      // Upload to Supabase Storage immediately (don't store as base64)
+      setIsUploading(true);
+      try {
+        const { url: publicUrl, mediaType: detectedType } = await uploadMedia(file, clientId, editedPost.id);
         setEditedPost(prev => ({
           ...prev,
-          imageUrl: reader.result as string,
-          mediaType: mediaType
+          imageUrl: publicUrl,
+          mediaType: detectedType
         }));
-      };
-      reader.readAsDataURL(file);
+      } catch (error: any) {
+        console.error('Upload error:', error);
+        setUploadError(error.message || 'Failed to upload media');
+      } finally {
+        setIsUploading(false);
+      }
     }
   };
 
@@ -58,14 +66,20 @@ export const PostEditor: React.FC<PostEditorProps> = ({ post, onUpdate, onClose 
           <h3 className="font-serif text-xl mb-4 text-brand-dark">New Post Visuals</h3>
 
           <div className="aspect-square bg-white rounded-lg border-2 border-dashed border-stone-300 flex items-center justify-center mb-4 relative overflow-hidden group">
-            {editedPost.imageUrl ? (
+            {isUploading ? (
+              <div className="text-stone-400 text-center p-4">
+                <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
+                <p>Uploading...</p>
+              </div>
+            ) : editedPost.imageUrl ? (
               isVideo ? (
                 <video
-                  src={editedPost.imageUrl}
+                  src={editedPost.imageUrl + '#t=0.5'}
                   className="w-full h-full object-cover"
                   controls
                   muted
                   playsInline
+                  preload="metadata"
                 />
               ) : (
                 <img src={editedPost.imageUrl} alt="Post" className="w-full h-full object-cover" />
@@ -85,6 +99,7 @@ export const PostEditor: React.FC<PostEditorProps> = ({ post, onUpdate, onClose 
                 accept="image/*,video/*"
                 onChange={handleMediaUpload}
                 className="absolute inset-0 opacity-0 cursor-pointer"
+                disabled={isUploading}
             />
           </div>
 
@@ -142,10 +157,15 @@ export const PostEditor: React.FC<PostEditorProps> = ({ post, onUpdate, onClose 
                 <p className="text-sm text-stone-500">Draft your new post details</p>
              </div>
              <div className="flex gap-2">
-                 <button onClick={() => { onUpdate(editedPost); onClose(); }} className="px-4 py-2 text-sm font-medium text-white bg-brand-dark hover:bg-black rounded-lg flex items-center gap-2">
-                    <Save className="w-4 h-4" /> Save to Calendar
+                 <button
+                   onClick={() => { onUpdate(editedPost); onClose(); }}
+                   disabled={isUploading}
+                   className="px-4 py-2 text-sm font-medium text-white bg-brand-dark hover:bg-black rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                 >
+                    {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    {isUploading ? 'Uploading...' : 'Save to Calendar'}
                  </button>
-                 <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-red-500 hover:bg-red-50 rounded-lg">Cancel</button>
+                 <button onClick={onClose} disabled={isUploading} className="px-4 py-2 text-sm font-medium text-red-500 hover:bg-red-50 rounded-lg disabled:opacity-50">Cancel</button>
              </div>
           </div>
 

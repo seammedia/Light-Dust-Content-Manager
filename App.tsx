@@ -1910,6 +1910,7 @@ Heath`
               imageUrl: '',
           }}
           brand={brandContext}
+          clientId={currentClient.id}
           onUpdate={(p) => handleNewPost(p)}
           onClose={() => setIsEditorOpen(false)}
         />
