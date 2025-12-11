@@ -586,6 +586,28 @@ The content manager integrates with [Late API](https://getlate.dev) for scheduli
 - Add the URL to Client Notes and save
 - The modal will show "Drive folder detected" when it finds a valid URL
 
+### Troubleshooting Video Upload
+
+**Video shows as grey box (no thumbnail):**
+- Videos are auto-detected from URL extension (.mp4, .mov, .webm, .m4v)
+- Refresh the page after uploading - thumbnail should appear
+- The `#t=0.5` fragment seeks to 0.5 seconds to show a frame
+
+**"Could not find media_type column" error:**
+- The `media_type` column doesn't exist in the database
+- Videos still work without it (auto-detected from URL)
+- Optional: Add column with SQL: `ALTER TABLE posts ADD COLUMN IF NOT EXISTS media_type TEXT DEFAULT 'image';`
+
+**Video disappears after saving new post:**
+- This was fixed - videos now upload directly to Supabase Storage
+- Previously videos were stored as base64 which exceeded database limits
+- If still happening, check browser console for specific error message
+
+**Video uploaded but won't play:**
+- Check the video format (MP4, MOV, WebM supported)
+- Video file might be corrupted - try re-uploading
+- Check Supabase Storage to verify file was uploaded
+
 ## Development History
 
 ### Recent Updates (2025-12-11)
@@ -611,7 +633,15 @@ The content manager integrates with [Late API](https://getlate.dev) for scheduli
    - Fixes "unrecognized file format" error when scheduling videos
    - Videos posted as Reels on Instagram, standard videos on Facebook/TikTok
 
-3. **Bulk Post Generation (AI)** - Generate multiple posts at once with AI
+3. **Video Upload & Thumbnail Fix** - Videos now upload and display correctly
+   - Videos uploaded in "Add Post" modal now go directly to Supabase Storage (not base64)
+   - Fixed "Could not find media_type column" error by removing media_type from insert
+   - Video thumbnails now show properly in table view (auto-detect from URL extension)
+   - Videos show "VIDEO" badge overlay and "Change Video" button
+   - Video preview modal works correctly when clicking on video posts
+   - `#t=0.5` added to video URLs to show first frame as thumbnail
+
+4. **Bulk Post Generation (AI)** - Generate multiple posts at once with AI
    - Click "Generate Posts" button (agency-only, purple gradient button)
    - Select number of posts (3, 5, 7, 10, or custom)
    - Pick start date and posting frequency (daily, every 2 days, every 3 days, weekly)
@@ -619,7 +649,7 @@ The content manager integrates with [Late API](https://getlate.dev) for scheduli
    - Posts created with "Generated" status ready for review
    - Uses Gemini 2.0 Flash for high-quality content generation
 
-2. **Client Management Dashboard** - New agency-only weekly overview for all clients
+5. **Client Management Dashboard** - New agency-only weekly overview for all clients
    - Access via "Client Management" tab (master account only)
    - Single status row per client showing overall weekly status
    - Color-coded status indicators:
