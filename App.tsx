@@ -1379,9 +1379,11 @@ export default function App() {
     }
   };
 
-  // Filter posts by selected month
+  // Filter posts by selected month and hide drafts from non-master accounts
   const filteredPosts = posts.filter(post => {
     if (!post.date) return false;
+    // Hide Draft posts from clients (non-master accounts)
+    if (!isMasterAccount && post.status === 'Draft') return false;
     const postDate = new Date(post.date);
     return postDate.getMonth() === selectedMonth.getMonth() &&
            postDate.getFullYear() === selectedMonth.getFullYear();
@@ -1983,7 +1985,7 @@ Heath`
               </div>
             </>
           ) : (
-            <CalendarView posts={posts} selectedMonth={selectedMonth} />
+            <CalendarView posts={isMasterAccount ? posts : posts.filter(p => p.status !== 'Draft')} selectedMonth={selectedMonth} />
           )}
           </>
           )}
