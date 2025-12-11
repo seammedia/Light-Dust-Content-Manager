@@ -18,6 +18,7 @@ A multi-client social content management platform where agencies can manage mult
 - 📱 **Responsive Design** - Works on all devices
 - 🔐 **PIN-Based Access** - Secure client authentication
 - ✨ **AI Caption Generation** - Generate captions and hashtags from images using Gemini AI (master account only)
+- 🚀 **Bulk Post Generation** - Generate multiple posts at once with AI-created captions and hashtags
 - 📧 **Gmail Integration** - Send review notification emails directly from the dashboard
 - 🏷️ **Editable Hashtags** - Click to edit hashtags inline
 - 📅 **Late API Scheduling** - Schedule approved posts to Instagram, Facebook, TikTok and more
@@ -542,7 +543,15 @@ The content manager integrates with [Late API](https://getlate.dev) for scheduli
 
 ### Recent Updates (2025-12-11)
 
-1. **Client Management Dashboard** - New agency-only weekly overview for all clients
+1. **Bulk Post Generation (AI)** - Generate multiple posts at once with AI
+   - Click "Generate Posts" button (agency-only, purple gradient button)
+   - Select number of posts (3, 5, 7, 10, or custom)
+   - Pick start date and posting frequency (daily, every 2 days, every 3 days, weekly)
+   - AI generates unique captions and hashtags for each post using brand context
+   - Posts created with "Generated" status ready for review
+   - Uses Gemini 2.0 Flash for high-quality content generation
+
+2. **Client Management Dashboard** - New agency-only weekly overview for all clients
    - Access via "Client Management" tab (master account only)
    - Single status row per client showing overall weekly status
    - Color-coded status indicators:
@@ -655,6 +664,7 @@ See `DEPLOYMENT.md` for detailed technical documentation of all improvements.
 - `App.tsx` - Main application with scheduling logic
 - `types.ts` - TypeScript interfaces including Meta credentials, Gmail settings
 - `components/ClientManagement.tsx` - Weekly client overview dashboard (agency-only)
+- `components/GeneratePostsModal.tsx` - Bulk AI post generation modal (agency-only)
 - `services/geminiService.ts` - AI caption generation and feedback processing
 - `services/gmailService.ts` - Gmail OAuth and email sending
 - `services/lateService.ts` - Late API integration for social scheduling

@@ -3,6 +3,7 @@ import { Post, BrandContext, Client, MediaType } from './types';
 import { PostEditor } from './components/PostEditor';
 import { MetaSettings } from './src/components/MetaSettings';
 import { ClientManagement } from './components/ClientManagement';
+import { GeneratePostsModal } from './components/GeneratePostsModal';
 import { supabase } from './services/supabaseClient';
 import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles, Mail, Clock, Send, FileText, Image, Film, X, LayoutGrid } from 'lucide-react';
 import { generateCaptionFromImage, updateFromFeedback, generateImageFromFeedback } from './services/geminiService';
@@ -502,6 +503,9 @@ export default function App() {
 
   // Main tab state (agency-only) - 'content' or 'clients'
   const [mainTab, setMainTab] = useState<'content' | 'clients'>('content');
+
+  // Generate Posts modal state (agency-only)
+  const [showGeneratePostsModal, setShowGeneratePostsModal] = useState(false);
   const [clientNotes, setClientNotes] = useState('');
   const [referenceImages, setReferenceImages] = useState<string[]>([]);
   const [uploadingReferenceImage, setUploadingReferenceImage] = useState(false);
@@ -1366,7 +1370,15 @@ export default function App() {
              <button className="text-sm font-medium text-stone-500 hover:text-brand-dark px-3 py-2 transition-colors">
                 Export to CSV
              </button>
-             <button 
+             {isMasterAccount && (
+               <button
+                onClick={() => setShowGeneratePostsModal(true)}
+                className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white px-4 py-2 rounded-md flex items-center gap-2 text-sm font-medium transition-all shadow-sm"
+              >
+                <Sparkles className="w-4 h-4" /> Generate Posts
+              </button>
+             )}
+             <button
               onClick={() => setIsEditorOpen(true)}
               className="bg-brand-dark hover:bg-black text-white px-4 py-2 rounded-md flex items-center gap-2 text-sm font-medium transition-colors shadow-sm"
             >
@@ -2310,6 +2322,18 @@ Example:
             </div>
           </div>
         </div>
+      )}
+
+      {/* Generate Posts Modal (Agency Only) */}
+      {showGeneratePostsModal && currentClient && (
+        <GeneratePostsModal
+          client={currentClient}
+          onClose={() => setShowGeneratePostsModal(false)}
+          onPostsGenerated={() => {
+            // Refresh posts
+            fetchPosts();
+          }}
+        />
       )}
 
       {/* Gmail Settings - floating button for master account */}
