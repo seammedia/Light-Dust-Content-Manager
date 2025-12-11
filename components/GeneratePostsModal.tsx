@@ -181,7 +181,6 @@ export function GeneratePostsModal({ client, onClose, onPostsGenerated }: Genera
           status: 'Generated',
           image_description: '',
           image_url: '',
-          media_type: 'image',
           generated_caption: idea.caption,
           generated_hashtags: idea.hashtags,
           notes: '',
