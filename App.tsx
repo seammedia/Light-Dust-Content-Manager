@@ -1265,7 +1265,7 @@ export default function App() {
     const postWithClient = { ...newPost, client_id: currentClient.id };
 
     // 2. Prepare for DB - ensure all required fields are present
-    const dbPayload = {
+    const dbPayload: any = {
       id: postWithClient.id, // Using the timestamp ID generated in modal
       client_id: currentClient.id,
       title: postWithClient.title || 'New Post',
@@ -1273,7 +1273,6 @@ export default function App() {
       status: postWithClient.status || 'Draft',
       image_description: postWithClient.imageDescription || '',
       image_url: postWithClient.imageUrl || '',
-      media_type: postWithClient.mediaType || 'image',
       generated_caption: postWithClient.generatedCaption || '',
       generated_hashtags: postWithClient.generatedHashtags || [],
       notes: postWithClient.notes || '',
