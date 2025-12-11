@@ -211,14 +211,27 @@ export function GeneratePostsModal({ client, onClose, onPostsGenerated }: Genera
 
       // Fetch images from Google Drive if enabled
       let driveImages: DriveFile[] = [];
-      if (includeImages && driveFolderId && driveConnected) {
-        setProgress('Fetching images from Google Drive...');
-        try {
-          driveImages = await getRandomImagesFromFolder(driveFolderId, numberOfPosts);
-        } catch (driveError: any) {
-          console.error('Drive fetch error:', driveError);
-          // Continue without images if Drive fetch fails
-          setProgress('Could not fetch Drive images, continuing without...');
+      if (includeImages && driveFolderId) {
+        // Re-check Drive connection at time of generation
+        const currentlyConnected = isDriveConnected();
+        if (!currentlyConnected) {
+          console.warn('Drive not connected at generation time');
+          setProgress('Drive not connected, continuing without images...');
+        } else {
+          setProgress('Fetching images from Google Drive...');
+          try {
+            driveImages = await getRandomImagesFromFolder(driveFolderId, numberOfPosts);
+            console.log(`Fetched ${driveImages.length} images from Drive`);
+            if (driveImages.length === 0) {
+              setProgress('No images found in Drive folder, continuing without...');
+            }
+          } catch (driveError: any) {
+            console.error('Drive fetch error:', driveError);
+            // Show the actual error to help debug
+            setProgress(`Drive error: ${driveError.message}. Continuing without images...`);
+            // Wait a moment so user can see the error
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
         }
       }
 
