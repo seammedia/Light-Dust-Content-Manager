@@ -559,6 +559,33 @@ The content manager integrates with [Late API](https://getlate.dev) for scheduli
 - Check Late dashboard → Scheduled posts
 - Verify the scheduled date/time is in the future
 
+**"Failed to validate Instagram image: unrecognized file format" (for videos):**
+- This means Late API received `type: 'image'` but the file is a video
+- Fixed in latest version: videos are now auto-detected from URL extension
+- If issue persists, re-upload the video to ensure `media_type` is saved correctly
+
+### Troubleshooting Google Drive
+
+**"Google Drive API has not been used in project" error:**
+- Enable the Google Drive API in Google Cloud Console
+- Go to: https://console.cloud.google.com/apis/api/drive.googleapis.com
+- Click "Enable" and wait a few minutes for propagation
+
+**"Folder not found" or no images fetched:**
+- Make sure the Drive folder is shared with the Google account you connected
+- Either share the folder with your connected account (Viewer access)
+- Or make the folder "Anyone with the link can view"
+
+**Images not moving to Posted folder:**
+- Reconnect Google Drive to grant full Drive permissions (not just readonly)
+- The newer version uses `drive` scope instead of `drive.readonly`
+- Click "Drive Connected" to disconnect, then "Connect Drive" again
+
+**Drive folder URL not detected:**
+- URL must be in format: `https://drive.google.com/drive/folders/FOLDER_ID`
+- Add the URL to Client Notes and save
+- The modal will show "Drive folder detected" when it finds a valid URL
+
 ## Development History
 
 ### Recent Updates (2025-12-11)
@@ -570,8 +597,21 @@ The content manager integrates with [Late API](https://getlate.dev) for scheduli
    - Images downloaded from Drive and uploaded to Supabase Storage
    - Uses same Google OAuth client as Gmail integration
    - Auto-enables image option when Drive folder detected in client notes
+   - **Posted Folder Feature**: Used images automatically moved to "Posted" subfolder
+     - Create a "Posted" folder inside your Drive image folder
+     - After an image is used, it's moved to Posted so it won't be selected again
+     - If "Posted" folder doesn't exist, it's created automatically
+   - **Important**: Must enable Google Drive API in Google Cloud Console
+     - Go to APIs & Services → Library → Search "Google Drive API" → Enable
+     - Same project as Gmail API (uses same OAuth client)
 
-2. **Bulk Post Generation (AI)** - Generate multiple posts at once with AI
+2. **Video Scheduling Fix** - Videos now schedule correctly to Late API
+   - Auto-detects video type from URL extension (.mp4, .mov, .webm, .m4v)
+   - Sends correct `mediaType: 'video'` to Late API (not 'image')
+   - Fixes "unrecognized file format" error when scheduling videos
+   - Videos posted as Reels on Instagram, standard videos on Facebook/TikTok
+
+3. **Bulk Post Generation (AI)** - Generate multiple posts at once with AI
    - Click "Generate Posts" button (agency-only, purple gradient button)
    - Select number of posts (3, 5, 7, 10, or custom)
    - Pick start date and posting frequency (daily, every 2 days, every 3 days, weekly)
