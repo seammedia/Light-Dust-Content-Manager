@@ -752,6 +752,13 @@ export default function App() {
       });
 
       console.log(`Auto-scheduled post ${postId} to ${platforms.length} platform(s) for ${scheduledFor}`);
+
+      // Update status to "Posted" after successful scheduling
+      setPosts(prev => prev.map(p => p.id === postId ? { ...p, status: 'Posted' } : p));
+      await supabase
+        .from('posts')
+        .update({ status: 'Posted' })
+        .eq('id', postId);
     } catch (error) {
       console.error('Auto-schedule error:', error);
     }
