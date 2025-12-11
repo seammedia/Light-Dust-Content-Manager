@@ -380,12 +380,22 @@ function CalendarView({ posts, selectedMonth }: { posts: Post[], selectedMonth: 
                       ? post.generatedCaption.substring(0, 40) + (post.generatedCaption.length > 40 ? '...' : '')
                       : post.title || 'Untitled Post';
 
+                    // Status-based colors
+                    const statusColors: Record<string, { bg: string; text: string; hoverBg: string; noImgBg: string; noImgText: string }> = {
+                      'Draft': { bg: 'bg-stone-100', text: 'text-stone-600', hoverBg: 'hover:bg-stone-200', noImgBg: 'bg-stone-200', noImgText: 'text-stone-400' },
+                      'Generated': { bg: 'bg-purple-100', text: 'text-purple-800', hoverBg: 'hover:bg-purple-200', noImgBg: 'bg-purple-200', noImgText: 'text-purple-400' },
+                      'For Approval': { bg: 'bg-amber-100', text: 'text-amber-800', hoverBg: 'hover:bg-amber-200', noImgBg: 'bg-amber-200', noImgText: 'text-amber-500' },
+                      'Approved': { bg: 'bg-emerald-100', text: 'text-emerald-800', hoverBg: 'hover:bg-emerald-200', noImgBg: 'bg-emerald-200', noImgText: 'text-emerald-500' },
+                      'Posted': { bg: 'bg-stone-200', text: 'text-stone-600', hoverBg: 'hover:bg-stone-300', noImgBg: 'bg-stone-300', noImgText: 'text-stone-500' },
+                    };
+                    const colors = statusColors[post.status] || statusColors['Draft'];
+
                     return (
                       <div
                         key={post.id}
                         onClick={() => setSelectedPost(post)}
-                        className="flex items-start gap-1.5 text-xs p-1.5 rounded cursor-pointer bg-pink-100 text-pink-800 hover:bg-pink-200 transition-colors"
-                        title={post.generatedCaption || post.title}
+                        className={`flex items-start gap-1.5 text-xs p-1.5 rounded cursor-pointer ${colors.bg} ${colors.text} ${colors.hoverBg} transition-colors`}
+                        title={`${post.status}: ${post.generatedCaption || post.title}`}
                       >
                         {/* Thumbnail */}
                         {post.imageUrl ? (
@@ -401,8 +411,8 @@ function CalendarView({ posts, selectedMonth }: { posts: Post[], selectedMonth: 
                             />
                           )
                         ) : (
-                          <div className="w-8 h-8 bg-pink-200 rounded flex-shrink-0 flex items-center justify-center">
-                            <span className="text-[10px] text-pink-400">No img</span>
+                          <div className={`w-8 h-8 ${colors.noImgBg} rounded flex-shrink-0 flex items-center justify-center`}>
+                            <span className={`text-[10px] ${colors.noImgText}`}>No img</span>
                           </div>
                         )}
                         {/* Caption snippet */}
