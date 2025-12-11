@@ -8,6 +8,7 @@ import {
   extractFolderIdFromUrl,
   getRandomImagesFromFolder,
   getFileAsBase64,
+  moveFileToPostedFolder,
   DriveFile
 } from '../services/driveService';
 import { uploadImage } from '../services/storageService';
@@ -257,6 +258,17 @@ export function GeneratePostsModal({ client, onClose, onPostsGenerated }: Genera
             const { base64, mimeType } = await getFileAsBase64(driveImages[i].id);
             const dataUrl = `data:${mimeType};base64,${base64}`;
             imageUrl = await uploadImage(dataUrl, client.id, postId);
+
+            // Move the used image to the "Posted" folder
+            if (imageUrl && driveFolderId) {
+              setProgress(`Moving image ${i + 1} to Posted folder...`);
+              const moved = await moveFileToPostedFolder(driveImages[i].id, driveFolderId);
+              if (moved) {
+                console.log(`Moved ${driveImages[i].name} to Posted folder`);
+              } else {
+                console.warn(`Could not move ${driveImages[i].name} to Posted folder`);
+              }
+            }
           } catch (uploadError) {
             console.error('Image upload error:', uploadError);
             // Continue without this image

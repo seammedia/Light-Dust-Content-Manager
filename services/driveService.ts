@@ -15,7 +15,8 @@ export interface DriveFile {
 }
 
 const DRIVE_STORAGE_KEY = 'seam_media_drive_settings';
-const SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email';
+// Need drive scope (not readonly) to move files to Posted folder
+const SCOPES = 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.email';
 
 // Get Drive settings from localStorage
 export const getDriveSettings = (): DriveSettings | null => {
@@ -271,4 +272,98 @@ export const getRandomImagesFromFolder = async (
   // Shuffle and pick random files
   const shuffled = [...allFiles].sort(() => Math.random() - 0.5);
   return shuffled.slice(0, Math.min(count, shuffled.length));
+};
+
+// Find or create the "Posted" subfolder within a parent folder
+export const findOrCreatePostedFolder = async (parentFolderId: string): Promise<string | null> => {
+  const settings = getDriveSettings();
+  if (!settings) return null;
+
+  try {
+    // First, try to find existing "Posted" folder
+    const query = `'${parentFolderId}' in parents and name = 'Posted' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
+    const url = new URL('https://www.googleapis.com/drive/v3/files');
+    url.searchParams.set('q', query);
+    url.searchParams.set('fields', 'files(id,name)');
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        'Authorization': `Bearer ${settings.accessToken}`
+      }
+    });
+
+    if (!response.ok) {
+      console.error('Failed to search for Posted folder');
+      return null;
+    }
+
+    const data = await response.json();
+    if (data.files && data.files.length > 0) {
+      return data.files[0].id;
+    }
+
+    // If not found, create the "Posted" folder
+    const createResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${settings.accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: 'Posted',
+        mimeType: 'application/vnd.google-apps.folder',
+        parents: [parentFolderId]
+      })
+    });
+
+    if (!createResponse.ok) {
+      console.error('Failed to create Posted folder');
+      return null;
+    }
+
+    const newFolder = await createResponse.json();
+    return newFolder.id;
+  } catch (error) {
+    console.error('Error finding/creating Posted folder:', error);
+    return null;
+  }
+};
+
+// Move a file to the Posted folder
+export const moveFileToPostedFolder = async (fileId: string, parentFolderId: string): Promise<boolean> => {
+  const settings = getDriveSettings();
+  if (!settings) return false;
+
+  try {
+    // Get the Posted folder ID
+    const postedFolderId = await findOrCreatePostedFolder(parentFolderId);
+    if (!postedFolderId) {
+      console.error('Could not find or create Posted folder');
+      return false;
+    }
+
+    // Move the file: remove from current parent, add to Posted folder
+    const url = new URL(`https://www.googleapis.com/drive/v3/files/${fileId}`);
+    url.searchParams.set('addParents', postedFolderId);
+    url.searchParams.set('removeParents', parentFolderId);
+
+    const response = await fetch(url.toString(), {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${settings.accessToken}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      console.error('Failed to move file:', error);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error moving file to Posted folder:', error);
+    return false;
+  }
 };
