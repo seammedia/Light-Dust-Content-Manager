@@ -699,75 +699,61 @@ export default function App() {
     const post = posts.find(p => p.id === postId);
     if (!post) return;
 
-    // Check if auto-posting is enabled for this client
-    if (!currentClient.auto_post_enabled) {
-      console.log('Auto-posting is disabled for this client');
+    // Check if client has assigned Late profiles for auto-scheduling
+    const clientProfileIds = currentClient.late_profile_ids || [];
+    if (clientProfileIds.length === 0) {
+      console.log('No social profiles assigned to this client for auto-scheduling');
       return;
     }
 
     try {
-      // Build caption
-      let caption = '';
-      if (post.generatedCaption) {
-        caption += post.generatedCaption;
-      }
+      // Build caption with hashtags
+      let content = post.generatedCaption || '';
       if (post.generatedHashtags && post.generatedHashtags.length > 0) {
-        caption += '\n\n' + post.generatedHashtags.map(tag => `#${tag}`).join(' ');
+        content += '\n\n' + post.generatedHashtags.map(tag => `#${tag}`).join(' ');
       }
-      if (!caption) {
-        caption = post.imageDescription || '';
-      }
-
-      const postPromises = [];
-
-      // Post to Facebook if enabled
-      if (currentClient.auto_post_to_facebook) {
-        postPromises.push(
-          fetch('/api/post-to-meta', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              clientId: currentClient.id,
-              postId: post.id,
-              platform: 'facebook',
-              imageUrl: post.imageUrl,
-              caption: caption,
-              scheduledTime: post.date,
-            }),
-          })
-        );
+      if (!content) {
+        content = post.imageDescription || '';
       }
 
-      // Post to Instagram if enabled
-      if (currentClient.auto_post_to_instagram && post.imageUrl) {
-        postPromises.push(
-          fetch('/api/post-to-meta', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              clientId: currentClient.id,
-              postId: post.id,
-              platform: 'instagram',
-              imageUrl: post.imageUrl,
-              caption: caption,
-              scheduledTime: post.date,
-            }),
-          })
-        );
+      // Check if post has valid media URL (not empty, not base64)
+      const hasValidMedia = post.imageUrl &&
+        post.imageUrl.trim() !== '' &&
+        post.imageUrl.startsWith('http');
+
+      // Fetch all profiles to get platform info
+      const allProfiles = await getProfiles();
+      const clientProfiles = allProfiles.filter(p => clientProfileIds.includes(p.id));
+
+      // Check if Instagram is in the client's profiles - Instagram requires media
+      const hasInstagram = clientProfiles.some(p => p.platform === 'instagram');
+      if (hasInstagram && !hasValidMedia) {
+        console.log('Skipping auto-schedule: Instagram requires media but post has no valid image/video');
+        return;
       }
 
-      // Execute all posts
-      const results = await Promise.all(postPromises);
+      // Build scheduled datetime using post date + 12:00 PM
+      const scheduledDateTime = `${post.date}T12:00:00`;
+      const scheduledFor = new Date(scheduledDateTime).toISOString();
 
-      // Check for errors
-      for (const result of results) {
-        if (!result.ok) {
-          const errorData = await result.json();
-          console.error('Auto-post error:', errorData.error);
-        }
-      }
+      // Build platforms array from client's assigned profiles
+      const platforms = clientProfiles.map(profile => ({
+        platform: profile.platform,
+        accountId: profile.id
+      }));
+
+      // Schedule the post via Late API
+      await schedulePost({
+        platforms,
+        content,
+        mediaUrls: hasValidMedia ? [post.imageUrl!] : [],
+        mediaType: post.mediaType || 'image',
+        scheduledFor
+      });
+
+      console.log(`Auto-scheduled post ${postId} to ${platforms.length} platform(s) for ${scheduledFor}`);
     } catch (error) {
-      console.error('Auto-post error:', error);
+      console.error('Auto-schedule error:', error);
     }
   };
 
