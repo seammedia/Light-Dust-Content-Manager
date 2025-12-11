@@ -1131,48 +1131,30 @@ export default function App() {
   const handleDuplicatePost = async (post: Post) => {
     if (!currentClient) return;
 
-    // Create a new post with the same content but as Draft
-    const newPost: Post = {
-      id: crypto.randomUUID(),
-      client_id: currentClient.id,
-      title: post.title,
-      imageDescription: post.imageDescription,
-      imageUrl: post.imageUrl,
-      mediaType: post.mediaType,
-      status: 'Draft',
-      generatedCaption: post.generatedCaption,
-      generatedHashtags: post.generatedHashtags,
-      date: post.date,
-      notes: ''
-    };
+    const newId = crypto.randomUUID();
 
-    // Optimistic update - add new post after the original
-    const postIndex = posts.findIndex(p => p.id === post.id);
-    const newPosts = [...posts];
-    newPosts.splice(postIndex + 1, 0, newPost);
-    setPosts(newPosts);
-
-    // Save to database
+    // Save to database first
     const { error } = await supabase
       .from('posts')
       .insert({
-        id: newPost.id,
-        client_id: newPost.client_id,
-        title: newPost.title,
-        image_description: newPost.imageDescription,
-        image_url: newPost.imageUrl,
-        media_type: newPost.mediaType,
-        status: newPost.status,
-        generated_caption: newPost.generatedCaption,
-        generated_hashtags: newPost.generatedHashtags,
-        date: newPost.date,
-        notes: newPost.notes
+        id: newId,
+        client_id: currentClient.id,
+        title: post.title,
+        image_description: post.imageDescription,
+        image_url: post.imageUrl,
+        media_type: post.mediaType,
+        status: 'Draft',
+        generated_caption: post.generatedCaption,
+        generated_hashtags: post.generatedHashtags,
+        date: post.date,
+        notes: ''
       });
 
     if (error) {
       console.error('Error duplicating post:', error);
-      fetchPosts(); // Revert on error
+      alert('Failed to duplicate post. Please try again.');
     }
+    // Realtime subscription will automatically refresh the posts list
   };
 
   const handleMediaChange = async (id: string, e: React.ChangeEvent<HTMLInputElement>) => {
