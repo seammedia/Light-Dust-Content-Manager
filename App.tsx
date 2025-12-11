@@ -1680,10 +1680,11 @@ Heath`
                                             <>
                                                 {post.mediaType === 'video' ? (
                                                   <video
-                                                    src={post.imageUrl}
+                                                    src={post.imageUrl + '#t=0.5'}
                                                     className="w-full h-full object-cover"
                                                     muted
                                                     playsInline
+                                                    preload="metadata"
                                                     onError={(e) => {
                                                       e.currentTarget.style.display = 'none';
                                                       e.currentTarget.parentElement?.classList.add('image-error');
