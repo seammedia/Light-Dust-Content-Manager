@@ -6,6 +6,7 @@ A multi-client social content management platform where agencies can manage mult
 
 - 👥 **Multi-Client Support** - Manage unlimited clients with isolated data
 - 🔐 **Master Account** - Agency access to switch between all clients
+- 📊 **Client Management Dashboard** - Weekly overview of all clients with color-coded status (Posted/Approved/Awaiting/Outstanding)
 - 📅 **Content Calendar** - Table view and visual calendar view
 - 🗓️ **Month Filtering** - Quick navigation between months
 - 🖼️ **Image & Video Upload** - Upload images or videos (mp4, mov, webm) with built-in date picker
@@ -539,7 +540,26 @@ The content manager integrates with [Late API](https://getlate.dev) for scheduli
 
 ## Development History
 
-### Recent Updates (2025-12-10)
+### Recent Updates (2025-12-11)
+
+1. **Client Management Dashboard** - New agency-only weekly overview for all clients
+   - Access via "Client Management" tab (master account only)
+   - Single status row per client showing overall weekly status
+   - Color-coded status indicators:
+     - **Green (Posted)** - All posts for the week have been posted
+     - **Blue (Approved)** - Posts approved, ready to schedule
+     - **Yellow (Awaiting Approval)** - Posts waiting for client approval
+     - **Grey (In Progress)** - Posts still being worked on (Draft/Generated)
+     - **Red (Outstanding)** - URGENT: Posts overdue or still awaiting approval
+   - Outstanding triggers when:
+     - Post date has passed but not posted yet
+     - Post is still "For Approval" (should have been approved by now)
+   - Week navigation with previous/next buttons
+   - Today's date highlighted in header
+   - Shows post count per client
+   - AI Status Report button (coming soon)
+
+### Updates (2025-12-10)
 
 1. **Video Upload & Scheduling Support** - Full video support for social media posts
    - Upload videos (MP4, MOV, WebM, M4V) up to 500MB
@@ -634,6 +654,7 @@ See `DEPLOYMENT.md` for detailed technical documentation of all improvements.
 ### Source Code
 - `App.tsx` - Main application with scheduling logic
 - `types.ts` - TypeScript interfaces including Meta credentials, Gmail settings
+- `components/ClientManagement.tsx` - Weekly client overview dashboard (agency-only)
 - `services/geminiService.ts` - AI caption generation and feedback processing
 - `services/gmailService.ts` - Gmail OAuth and email sending
 - `services/lateService.ts` - Late API integration for social scheduling
