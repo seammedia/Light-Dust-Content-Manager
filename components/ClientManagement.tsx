@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Info, Sparkles } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Info, Sparkles, Check, Clock, AlertTriangle, Loader2 } from 'lucide-react';
 import { Client, Post } from '../types';
 import { supabase } from '../services/supabaseClient';
 
@@ -7,43 +7,16 @@ interface ClientManagementProps {
   clients: Client[];
 }
 
-// Status priority for determining weekly status (highest to lowest)
-const STATUS_PRIORITY: Record<string, number> = {
-  'Draft': 1,
-  'Generated': 2,
-  'For Approval': 3,
-  'Approved': 4,
-  'Posted': 5,
-};
+// Weekly status types
+type WeeklyStatusType = 'posted' | 'approved' | 'awaiting' | 'in_progress' | 'outstanding' | 'no_posts';
 
-// Get the lowest status (earliest in workflow) for a week's posts
-const getWeeklyStatus = (posts: Post[]): string | null => {
-  if (posts.length === 0) return null;
-
-  let lowestPriority = Infinity;
-  let lowestStatus = null;
-
-  for (const post of posts) {
-    const priority = STATUS_PRIORITY[post.status] || 0;
-    if (priority < lowestPriority) {
-      lowestPriority = priority;
-      lowestStatus = post.status;
-    }
-  }
-
-  return lowestStatus;
-};
-
-// Get week dates (Monday to Sunday)
-const getWeekDates = (weekStart: Date): Date[] => {
-  const dates: Date[] = [];
-  for (let i = 0; i < 7; i++) {
-    const date = new Date(weekStart);
-    date.setDate(weekStart.getDate() + i);
-    dates.push(date);
-  }
-  return dates;
-};
+interface WeeklyStatusInfo {
+  type: WeeklyStatusType;
+  label: string;
+  bgColor: string;
+  textColor: string;
+  icon: React.ReactNode;
+}
 
 // Get Monday of the week containing a date
 const getMonday = (date: Date): Date => {
@@ -58,6 +31,113 @@ const getMonday = (date: Date): Date => {
 // Format date as YYYY-MM-DD
 const formatDateKey = (date: Date): string => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+
+// Get week dates (Monday to Sunday)
+const getWeekDates = (weekStart: Date): Date[] => {
+  const dates: Date[] = [];
+  for (let i = 0; i < 7; i++) {
+    const date = new Date(weekStart);
+    date.setDate(weekStart.getDate() + i);
+    dates.push(date);
+  }
+  return dates;
+};
+
+// Determine the weekly status for a client's posts
+const getWeeklyStatusInfo = (posts: Post[], today: Date): WeeklyStatusInfo => {
+  const todayStr = formatDateKey(today);
+
+  if (posts.length === 0) {
+    return {
+      type: 'no_posts',
+      label: 'No posts scheduled',
+      bgColor: 'bg-stone-100',
+      textColor: 'text-stone-400',
+      icon: <span className="text-stone-300">—</span>
+    };
+  }
+
+  // Check for outstanding posts (past date, not posted)
+  const hasOutstanding = posts.some(post => {
+    const postDate = post.date;
+    const isOverdue = postDate < todayStr;
+    const notPosted = post.status !== 'Posted';
+    return isOverdue && notPosted;
+  });
+
+  if (hasOutstanding) {
+    return {
+      type: 'outstanding',
+      label: 'Outstanding',
+      bgColor: 'bg-red-500',
+      textColor: 'text-white',
+      icon: <AlertTriangle className="w-5 h-5" />
+    };
+  }
+
+  // Check if all posts are posted
+  const allPosted = posts.every(post => post.status === 'Posted');
+  if (allPosted) {
+    return {
+      type: 'posted',
+      label: 'Posted',
+      bgColor: 'bg-emerald-500',
+      textColor: 'text-white',
+      icon: <Check className="w-5 h-5" />
+    };
+  }
+
+  // Check if any posts are awaiting approval (For Approval status)
+  const hasAwaitingApproval = posts.some(post => post.status === 'For Approval');
+
+  // Check if any posts are approved but not posted
+  const hasApproved = posts.some(post => post.status === 'Approved');
+
+  // Check if any posts are in progress (Draft or Generated)
+  const hasInProgress = posts.some(post => post.status === 'Draft' || post.status === 'Generated');
+
+  // Priority: Outstanding > In Progress > Awaiting Approval > Approved > Posted
+  // (Show the "worst" status that needs attention)
+
+  if (hasInProgress) {
+    return {
+      type: 'in_progress',
+      label: 'In Progress',
+      bgColor: 'bg-stone-400',
+      textColor: 'text-white',
+      icon: <Loader2 className="w-5 h-5" />
+    };
+  }
+
+  if (hasAwaitingApproval) {
+    return {
+      type: 'awaiting',
+      label: 'Awaiting Approval',
+      bgColor: 'bg-amber-400',
+      textColor: 'text-amber-900',
+      icon: <Clock className="w-5 h-5" />
+    };
+  }
+
+  if (hasApproved) {
+    return {
+      type: 'approved',
+      label: 'Approved',
+      bgColor: 'bg-sky-400',
+      textColor: 'text-white',
+      icon: <Check className="w-5 h-5" />
+    };
+  }
+
+  // Fallback
+  return {
+    type: 'no_posts',
+    label: 'No posts scheduled',
+    bgColor: 'bg-stone-100',
+    textColor: 'text-stone-400',
+    icon: <span className="text-stone-300">—</span>
+  };
 };
 
 export function ClientManagement({ clients }: ClientManagementProps) {
@@ -140,71 +220,12 @@ export function ClientManagement({ clients }: ClientManagementProps) {
   weekEnd.setDate(currentWeekStart.getDate() + 6);
   const weekRangeStr = `${currentWeekStart.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })}`;
 
-  // Get posts for a specific client and date
-  const getPostsForClientDate = (clientId: string, date: Date): Post[] => {
-    const dateKey = formatDateKey(date);
-    const clientPosts = allPosts[clientId] || [];
-    return clientPosts.filter(post => post.date === dateKey);
-  };
-
-  // Get cell background color based on status
-  const getStatusColor = (status: string | null, hasPosts: boolean): string => {
-    if (!hasPosts) return 'bg-stone-50'; // No posts scheduled
-
-    switch (status) {
-      case 'Posted':
-        return 'bg-emerald-400'; // Green
-      case 'Approved':
-        return 'bg-sky-300'; // Blue
-      case 'For Approval':
-        return 'bg-amber-300'; // Orange
-      case 'Generated':
-      case 'Draft':
-        return 'bg-stone-200'; // Grey
-      default:
-        return 'bg-stone-50';
-    }
-  };
-
-  // Get icon for cell
-  const getCellIcon = (status: string | null, hasPosts: boolean) => {
-    if (!hasPosts) {
-      return <span className="text-stone-300 text-xs">—</span>;
-    }
-
-    switch (status) {
-      case 'Posted':
-        return (
-          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-          </svg>
-        );
-      case 'Approved':
-        return (
-          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-          </svg>
-        );
-      case 'For Approval':
-        return (
-          <svg className="w-4 h-4 text-amber-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        );
-      default:
-        return (
-          <svg className="w-4 h-4 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
-        );
-    }
-  };
-
   // Filter to only show non-master clients
   const displayClients = clients.filter(c => c.pin !== '1991');
 
   // Check if today is in the current week
   const today = new Date();
+  today.setHours(0, 0, 0, 0);
   const todayKey = formatDateKey(today);
   const isToday = (date: Date) => formatDateKey(date) === todayKey;
 
@@ -236,20 +257,24 @@ export function ClientManagement({ clients }: ClientManagementProps) {
         {/* Legend */}
         <div className="flex items-center gap-4 text-xs">
           <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded bg-emerald-400"></div>
+            <div className="w-3 h-3 rounded bg-emerald-500"></div>
             <span className="text-stone-500">Posted</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded bg-sky-300"></div>
+            <div className="w-3 h-3 rounded bg-sky-400"></div>
             <span className="text-stone-500">Approved</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded bg-amber-300"></div>
+            <div className="w-3 h-3 rounded bg-amber-400"></div>
             <span className="text-stone-500">Awaiting Approval</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded bg-stone-200"></div>
+            <div className="w-3 h-3 rounded bg-stone-400"></div>
             <span className="text-stone-500">In Progress</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded bg-red-500"></div>
+            <span className="text-stone-500">Outstanding</span>
           </div>
           <button
             className="ml-2 flex items-center gap-1.5 px-3 py-1.5 bg-rose-500 hover:bg-rose-600 text-white rounded-lg font-medium transition-colors"
@@ -269,34 +294,38 @@ export function ClientManagement({ clients }: ClientManagementProps) {
               <th className="text-left py-3 px-4 text-xs font-semibold text-stone-500 uppercase tracking-wider w-56">
                 Client Name
               </th>
-              {weekDates.map((date, idx) => {
-                const dayIsToday = isToday(date);
-                return (
-                  <th
-                    key={idx}
-                    className={`text-center py-3 px-2 text-xs font-semibold uppercase tracking-wider min-w-[100px] ${
-                      dayIsToday ? 'bg-brand-green text-white' : 'text-stone-500'
-                    }`}
-                  >
-                    <div>{dayNames[idx]}</div>
-                    <div className={`text-lg font-bold ${dayIsToday ? 'text-white' : 'text-stone-700'}`}>
-                      {date.getDate()}
-                    </div>
-                  </th>
-                );
-              })}
+              <th className="text-center py-3 px-4 text-xs font-semibold text-stone-500 uppercase tracking-wider" colSpan={7}>
+                <div className="flex justify-between px-2">
+                  {weekDates.map((date, idx) => {
+                    const dayIsToday = isToday(date);
+                    return (
+                      <div
+                        key={idx}
+                        className={`flex flex-col items-center min-w-[60px] py-1 px-2 rounded-lg ${
+                          dayIsToday ? 'bg-brand-green text-white' : ''
+                        }`}
+                      >
+                        <span className={`text-xs ${dayIsToday ? 'text-white' : 'text-stone-500'}`}>{dayNames[idx]}</span>
+                        <span className={`text-lg font-bold ${dayIsToday ? 'text-white' : 'text-stone-700'}`}>
+                          {date.getDate()}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} className="text-center py-12 text-stone-400">
+                <td colSpan={2} className="text-center py-12 text-stone-400">
                   Loading client data...
                 </td>
               </tr>
             ) : displayClients.length === 0 ? (
               <tr>
-                <td colSpan={8} className="text-center py-12 text-stone-400">
+                <td colSpan={2} className="text-center py-12 text-stone-400">
                   No clients found
                 </td>
               </tr>
@@ -317,6 +346,11 @@ export function ClientManagement({ clients }: ClientManagementProps) {
                 ];
                 const colorIdx = client.name.charCodeAt(0) % colors.length;
                 const avatarColor = colors[colorIdx];
+
+                // Get all posts for this client this week
+                const clientPosts = allPosts[client.id] || [];
+                const statusInfo = getWeeklyStatusInfo(clientPosts, today);
+                const postCount = clientPosts.length;
 
                 return (
                   <tr key={client.id} className="border-b border-stone-100 hover:bg-stone-50/50">
@@ -339,23 +373,20 @@ export function ClientManagement({ clients }: ClientManagementProps) {
                         </button>
                       </div>
                     </td>
-                    {weekDates.map((date, idx) => {
-                      const postsForDay = getPostsForClientDate(client.id, date);
-                      const hasPosts = postsForDay.length > 0;
-                      const dayStatus = getWeeklyStatus(postsForDay);
-                      const bgColor = getStatusColor(dayStatus, hasPosts);
-
-                      return (
-                        <td key={idx} className="py-2 px-2">
-                          <div
-                            className={`h-12 rounded-lg ${bgColor} flex items-center justify-center transition-all hover:opacity-80 cursor-pointer`}
-                            title={hasPosts ? `${postsForDay.length} post(s) - ${dayStatus}` : 'No posts scheduled'}
-                          >
-                            {getCellIcon(dayStatus, hasPosts)}
-                          </div>
-                        </td>
-                      );
-                    })}
+                    <td className="py-3 px-4">
+                      <div
+                        className={`flex items-center justify-center gap-3 py-3 px-6 rounded-lg ${statusInfo.bgColor} ${statusInfo.textColor} transition-all hover:opacity-90 cursor-pointer`}
+                        title={`${postCount} post(s) this week`}
+                      >
+                        {statusInfo.icon}
+                        <span className="font-semibold">{statusInfo.label}</span>
+                        {postCount > 0 && (
+                          <span className={`text-sm ${statusInfo.type === 'awaiting' ? 'text-amber-800' : 'opacity-80'}`}>
+                            ({postCount} post{postCount !== 1 ? 's' : ''})
+                          </span>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 );
               })
