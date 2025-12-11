@@ -2,8 +2,9 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Post, BrandContext, Client, MediaType } from './types';
 import { PostEditor } from './components/PostEditor';
 import { MetaSettings } from './src/components/MetaSettings';
+import { ClientManagement } from './components/ClientManagement';
 import { supabase } from './services/supabaseClient';
-import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles, Mail, Clock, Send, FileText, Image, Film, X } from 'lucide-react';
+import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles, Mail, Clock, Send, FileText, Image, Film, X, LayoutGrid } from 'lucide-react';
 import { generateCaptionFromImage, updateFromFeedback, generateImageFromFeedback } from './services/geminiService';
 import { isGmailConnected, getConnectedEmail, connectGmail, sendEmail, clearGmailSettings } from './services/gmailService';
 import { isLateConfigured, getProfiles, schedulePost, LateProfile } from './services/lateService';
@@ -498,6 +499,9 @@ export default function App() {
 
   // Client Notes state (agency-only)
   const [showClientNotesModal, setShowClientNotesModal] = useState(false);
+
+  // Main tab state (agency-only) - 'content' or 'clients'
+  const [mainTab, setMainTab] = useState<'content' | 'clients'>('content');
   const [clientNotes, setClientNotes] = useState('');
   const [referenceImages, setReferenceImages] = useState<string[]>([]);
   const [uploadingReferenceImage, setUploadingReferenceImage] = useState(false);
@@ -1382,6 +1386,40 @@ export default function App() {
       {/* Main Content */}
       <main className="flex-1 overflow-x-auto p-6">
         <div className="min-w-[1200px] max-w-[1600px] mx-auto">
+          {/* Main Tab Navigation (Agency Only) */}
+          {isMasterAccount && (
+            <div className="flex gap-1 mb-6 border-b border-stone-200">
+              <button
+                onClick={() => setMainTab('content')}
+                className={`flex items-center gap-2 px-4 py-3 font-medium text-sm transition-all border-b-2 -mb-[2px] ${
+                  mainTab === 'content'
+                    ? 'text-brand-dark border-brand-green'
+                    : 'text-stone-400 border-transparent hover:text-stone-600'
+                }`}
+              >
+                <Table2 className="w-4 h-4" />
+                Content Manager
+              </button>
+              <button
+                onClick={() => setMainTab('clients')}
+                className={`flex items-center gap-2 px-4 py-3 font-medium text-sm transition-all border-b-2 -mb-[2px] ${
+                  mainTab === 'clients'
+                    ? 'text-brand-dark border-brand-green'
+                    : 'text-stone-400 border-transparent hover:text-stone-600'
+                }`}
+              >
+                <LayoutGrid className="w-4 h-4" />
+                Client Management
+                <span className="w-2 h-2 bg-rose-500 rounded-full"></span>
+              </button>
+            </div>
+          )}
+
+          {/* Client Management View (Agency Only) */}
+          {isMasterAccount && mainTab === 'clients' ? (
+            <ClientManagement clients={allClients} />
+          ) : (
+          <>
           {/* Month Filter Tabs */}
           <div className="flex gap-2 mb-4 overflow-x-auto">
             {Array.from({ length: 6 }, (_, i) => {
@@ -1787,6 +1825,8 @@ Heath`
             </>
           ) : (
             <CalendarView posts={posts} selectedMonth={selectedMonth} />
+          )}
+          </>
           )}
         </div>
       </main>
