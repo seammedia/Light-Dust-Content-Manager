@@ -1264,11 +1264,22 @@ export default function App() {
     // Add client_id to new post
     const postWithClient = { ...newPost, client_id: currentClient.id };
 
-    // 2. Prepare for DB
+    // 2. Prepare for DB - ensure all required fields are present
     const dbPayload = {
       id: postWithClient.id, // Using the timestamp ID generated in modal
-      ...mapPostToDb(postWithClient)
+      client_id: currentClient.id,
+      title: postWithClient.title || 'New Post',
+      date: postWithClient.date,
+      status: postWithClient.status || 'Draft',
+      image_description: postWithClient.imageDescription || '',
+      image_url: postWithClient.imageUrl || '',
+      media_type: postWithClient.mediaType || 'image',
+      generated_caption: postWithClient.generatedCaption || '',
+      generated_hashtags: postWithClient.generatedHashtags || [],
+      notes: postWithClient.notes || '',
     };
+
+    console.log('Creating new post:', dbPayload);
 
     // 3. Optimistic Add
     setPosts([...posts, postWithClient]);
@@ -1277,12 +1288,10 @@ export default function App() {
     const { error } = await supabase.from('posts').insert([dbPayload]);
     if (error) {
       console.error("Error creating post:", error);
-      if (error.message?.includes('payload')) {
-          setStorageError("Failed to create post: Image too large.");
-      } else {
-          setStorageError("Failed to create post.");
-      }
+      alert(`Failed to create post: ${error.message}`);
       fetchPosts(); // Revert
+    } else {
+      console.log('Post created successfully');
     }
   };
 
