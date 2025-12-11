@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { X, Sparkles, Loader2, Calendar, Hash } from 'lucide-react';
 import { Client } from '../types';
 import { supabase } from '../services/supabaseClient';
+import { v4 as uuidv4 } from 'uuid';
 
 interface GeneratePostsModalProps {
   client: Client;
@@ -175,6 +176,7 @@ export function GeneratePostsModal({ client, onClose, onPostsGenerated }: Genera
         const date = dates[i] || dates[dates.length - 1];
 
         postsToCreate.push({
+          id: uuidv4(),
           client_id: client.id,
           title: `Post ${i + 1}`,
           date: date,
