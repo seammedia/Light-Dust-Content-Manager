@@ -23,6 +23,11 @@ A multi-client social content management platform where agencies can manage mult
 - 📁 **Google Drive Integration** - Fetch images from client's Drive folders for post generation
 - 🏷️ **Editable Hashtags** - Click to edit hashtags inline
 - 📅 **Late API Scheduling** - Schedule approved posts to Instagram, Facebook, TikTok and more
+- 🔄 **Auto-Schedule on Approval** - Posts automatically schedule when status changes to Approved
+- 👥 **Client-Specific Social Accounts** - Assign social accounts to each client separately
+- 📋 **Duplicate Posts** - Copy existing posts with one click (duplicates as Draft)
+- 🎨 **Status-Colored Calendar** - Calendar view shows posts color-coded by status
+- 🔒 **Hidden Drafts** - Draft posts only visible to agency, not clients
 - 🖼️ **Auto Image Cropping** - Automatically crops images to fit Instagram's aspect ratio requirements
 - ☁️ **Supabase Storage** - Images stored as public URLs for social media compatibility
 - 🧹 **Auto Cleanup** - Old images automatically deleted after 60 days to save storage
@@ -612,7 +617,44 @@ The content manager integrates with [Late API](https://getlate.dev) for scheduli
 
 ### Recent Updates (2025-12-11)
 
-1. **Google Drive Integration** - Fetch images from client's Google Drive folders
+1. **Client-Specific Social Account Assignment** - Assign specific Late social profiles to each client
+   - Open Client Notes and scroll to "Social Media Accounts" section
+   - Select which Facebook, Instagram, TikTok etc. accounts belong to each client
+   - Schedule Posts modal now only shows accounts assigned to the current client
+   - Prevents accidentally posting to wrong client's social accounts
+
+2. **Auto-Schedule on Approval** - Posts automatically schedule when approved
+   - When post status changes to "Approved", it auto-schedules to client's assigned social accounts
+   - Schedules for the post's date at 12:00 PM
+   - Status automatically updates to "Posted" after successful scheduling
+   - Requires social accounts to be assigned to the client first
+
+3. **Calendar View Status Colors** - Visual status indicators in calendar
+   - **Draft**: Light grey
+   - **Generated**: Purple
+   - **For Approval**: Amber/Yellow
+   - **Approved**: Green
+   - **Posted**: Darker grey
+   - Hover shows status in tooltip
+
+4. **Duplicate Post Button** - Copy existing posts easily
+   - Click the copy icon (next to trash) under the post date
+   - Creates exact duplicate with same image, caption, hashtags, and date
+   - Duplicate is always set to "Draft" status
+   - Appears below the original post
+
+5. **Hide Drafts from Clients** - Draft posts only visible to agency
+   - Clients (non-master accounts) cannot see Draft posts
+   - Drafts hidden from both Table View and Calendar View
+   - Agency/master account (PIN 1991) can see all posts including Drafts
+
+6. **Database Migration Required** - Run this SQL to enable social account assignment:
+   ```sql
+   ALTER TABLE clients
+   ADD COLUMN IF NOT EXISTS late_profile_ids JSONB DEFAULT '[]'::jsonb;
+   ```
+
+7. **Google Drive Integration** - Fetch images from client's Google Drive folders
    - Connect Google Drive via floating button (bottom-right, blue button)
    - Add Drive folder URL to Client Notes section
    - When generating posts, option to auto-attach random images from Drive folder
