@@ -17,6 +17,7 @@ export interface Client {
   auto_post_enabled?: boolean;
   auto_post_to_facebook?: boolean;
   auto_post_to_instagram?: boolean;
+  late_profile_ids?: string[]; // IDs of Late social profiles assigned to this client
   created_at: string;
   updated_at: string;
 }

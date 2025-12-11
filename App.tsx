@@ -520,6 +520,9 @@ export default function App() {
   const [referenceImages, setReferenceImages] = useState<string[]>([]);
   const [uploadingReferenceImage, setUploadingReferenceImage] = useState(false);
   const [savingClientNotes, setSavingClientNotes] = useState(false);
+  const [clientLateProfiles, setClientLateProfiles] = useState<LateProfile[]>([]);
+  const [selectedLateProfileIds, setSelectedLateProfileIds] = useState<string[]>([]);
+  const [loadingClientProfiles, setLoadingClientProfiles] = useState(false);
 
   // Debounce timer for database updates
   const debounceTimers = useRef<Record<string, NodeJS.Timeout>>({});
@@ -821,7 +824,12 @@ export default function App() {
     setShowScheduleModal(true);
     setLoadingProfiles(true);
     try {
-      const profiles = await getProfiles();
+      const allProfiles = await getProfiles();
+      // Filter profiles to only show those assigned to the current client
+      const clientProfileIds = currentClient?.late_profile_ids || [];
+      const profiles = clientProfileIds.length > 0
+        ? allProfiles.filter(p => clientProfileIds.includes(p.id))
+        : allProfiles; // Show all if no profiles assigned (for backwards compatibility)
       setLateProfiles(profiles);
       // Auto-select all profiles by default
       setSelectedProfiles(profiles.map(p => p.id));
@@ -963,10 +971,22 @@ export default function App() {
   };
 
   // Client Notes handlers
-  const handleOpenClientNotes = () => {
+  const handleOpenClientNotes = async () => {
     setClientNotes(currentClient?.client_notes || '');
     setReferenceImages(currentClient?.reference_images || []);
+    setSelectedLateProfileIds(currentClient?.late_profile_ids || []);
     setShowClientNotesModal(true);
+
+    // Fetch all available Late profiles
+    setLoadingClientProfiles(true);
+    try {
+      const profiles = await getProfiles();
+      setClientLateProfiles(profiles);
+    } catch (error) {
+      console.error('Error fetching Late profiles:', error);
+    } finally {
+      setLoadingClientProfiles(false);
+    }
   };
 
   const handleSaveClientNotes = async () => {
@@ -978,14 +998,15 @@ export default function App() {
         .from('clients')
         .update({
           client_notes: clientNotes,
-          reference_images: referenceImages
+          reference_images: referenceImages,
+          late_profile_ids: selectedLateProfileIds
         })
         .eq('id', currentClient.id);
 
       if (error) throw error;
 
       // Update current client state
-      const updatedClient = { ...currentClient, client_notes: clientNotes, reference_images: referenceImages };
+      const updatedClient = { ...currentClient, client_notes: clientNotes, reference_images: referenceImages, late_profile_ids: selectedLateProfileIds };
       setCurrentClient(updatedClient);
 
       // Also update in allClients array so notes persist when switching clients
@@ -1000,6 +1021,14 @@ export default function App() {
     } finally {
       setSavingClientNotes(false);
     }
+  };
+
+  const toggleClientLateProfile = (profileId: string) => {
+    setSelectedLateProfileIds(prev =>
+      prev.includes(profileId)
+        ? prev.filter(id => id !== profileId)
+        : [...prev, profileId]
+    );
   };
 
   const handleReferenceImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2147,6 +2176,74 @@ Example:
               <p className="text-xs text-stone-400 mt-2">
                 Tip: Upload images that represent the brand's visual style, color palette, or aesthetic preferences.
               </p>
+            </div>
+
+            {/* Social Accounts Section */}
+            <div className="mt-6 pt-6 border-t border-stone-200">
+              <div className="flex items-center gap-2 mb-3">
+                <Users className="w-5 h-5 text-brand-green" />
+                <h3 className="font-medium text-stone-800">Social Media Accounts</h3>
+              </div>
+              <p className="text-sm text-stone-500 mb-4">
+                Select which social media accounts belong to this client. Only selected accounts will appear when scheduling posts.
+              </p>
+
+              {loadingClientProfiles ? (
+                <div className="flex items-center justify-center py-6 text-stone-400">
+                  <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                  Loading accounts...
+                </div>
+              ) : clientLateProfiles.length === 0 ? (
+                <p className="text-sm text-stone-400 py-4 text-center">
+                  No social accounts connected. Please configure your Late API settings.
+                </p>
+              ) : (
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {clientLateProfiles.map((profile) => {
+                    const isSelected = selectedLateProfileIds.includes(profile.id);
+                    const platformColors: Record<string, string> = {
+                      instagram: 'bg-gradient-to-r from-purple-500 to-pink-500',
+                      facebook: 'bg-blue-600',
+                      tiktok: 'bg-black',
+                      twitter: 'bg-sky-500',
+                      linkedin: 'bg-blue-700',
+                      youtube: 'bg-red-600',
+                      pinterest: 'bg-red-500'
+                    };
+                    const bgColor = platformColors[profile.platform.toLowerCase()] || 'bg-stone-500';
+
+                    return (
+                      <label
+                        key={profile.id}
+                        className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                          isSelected
+                            ? 'border-brand-green bg-emerald-50'
+                            : 'border-stone-200 hover:border-stone-300 hover:bg-stone-50'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleClientLateProfile(profile.id)}
+                          className="w-4 h-4 text-brand-green border-stone-300 rounded focus:ring-brand-green"
+                        />
+                        <div className={`w-8 h-8 rounded-full ${bgColor} flex items-center justify-center text-white text-xs font-bold shrink-0`}>
+                          {profile.platform.substring(0, 2).toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-stone-800 truncate">{profile.username}</div>
+                          <div className="text-xs text-stone-500 capitalize">{profile.platform}</div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+              {clientLateProfiles.length > 0 && (
+                <p className="text-xs text-stone-400 mt-2">
+                  {selectedLateProfileIds.length} of {clientLateProfiles.length} account{clientLateProfiles.length !== 1 ? 's' : ''} selected
+                </p>
+              )}
             </div>
 
             <div className="flex gap-3 mt-6">
