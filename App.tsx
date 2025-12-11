@@ -869,6 +869,7 @@ export default function App() {
     let successCount = 0;
     let errorCount = 0;
     let lastError = '';
+    const failedPostIds: string[] = [];
 
     try {
       for (const post of approvedPosts) {
@@ -892,6 +893,12 @@ export default function App() {
         });
 
         try {
+          console.log(`Scheduling post ${post.id}:`, {
+            mediaType: post.mediaType,
+            imageUrl: post.imageUrl?.substring(0, 100),
+            platforms: platforms.map(p => p.platform),
+          });
+
           await schedulePost({
             platforms,
             content,
@@ -905,15 +912,20 @@ export default function App() {
           await handleUpdatePost(post.id, 'status', 'Posted');
         } catch (error: any) {
           console.error(`Error scheduling post ${post.id}:`, error);
-          lastError = error.message || 'Unknown error';
+          const mediaInfo = post.mediaType === 'video' ? ' (video)' : ' (image)';
+          lastError = `${error.message || 'Unknown error'}${mediaInfo}`;
           errorCount++;
+          // Store which posts failed for better feedback
+          failedPostIds.push(post.title || post.date);
         }
       }
 
-      if (successCount > 0) {
-        alert(`Successfully scheduled ${successCount} post(s)!${errorCount > 0 ? ` (${errorCount} failed)` : ''}`);
+      if (successCount > 0 && errorCount === 0) {
+        alert(`Successfully scheduled ${successCount} post(s)!`);
+      } else if (successCount > 0 && errorCount > 0) {
+        alert(`Scheduled ${successCount} post(s), but ${errorCount} failed.\n\nFailed posts: ${failedPostIds.join(', ')}\n\nError: ${lastError}`);
       } else {
-        alert(`Failed to schedule posts: ${lastError || 'Please check your Late API configuration.'}`);
+        alert(`Failed to schedule posts.\n\nError: ${lastError || 'Please check your Late API configuration.'}`);
       }
 
       setShowScheduleModal(false);
