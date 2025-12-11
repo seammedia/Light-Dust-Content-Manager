@@ -1133,21 +1133,28 @@ export default function App() {
 
     const newId = crypto.randomUUID();
 
-    // Save to database first - ensure all required fields have values
+    // Build insert data - only include media_type if the post has one
+    const insertData: Record<string, any> = {
+      id: newId,
+      client_id: currentClient.id,
+      title: post.title || 'Untitled',
+      image_description: post.imageDescription || '',
+      image_url: post.imageUrl || null,
+      status: 'Draft',
+      generated_caption: post.generatedCaption || null,
+      generated_hashtags: post.generatedHashtags || [],
+      date: post.date
+    };
+
+    // Only include media_type if it exists on the original post
+    if (post.mediaType) {
+      insertData.media_type = post.mediaType;
+    }
+
+    // Save to database
     const { error } = await supabase
       .from('posts')
-      .insert({
-        id: newId,
-        client_id: currentClient.id,
-        title: post.title || 'Untitled',
-        image_description: post.imageDescription || '',
-        image_url: post.imageUrl || null,
-        media_type: post.mediaType || 'image',
-        status: 'Draft',
-        generated_caption: post.generatedCaption || null,
-        generated_hashtags: post.generatedHashtags || [],
-        date: post.date
-      });
+      .insert(insertData);
 
     if (error) {
       console.error('Error duplicating post:', error);
