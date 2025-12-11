@@ -1120,11 +1120,58 @@ export default function App() {
         .from('posts')
         .delete()
         .eq('id', id);
-        
+
       if (error) {
         console.error('Error deleting post:', error);
         fetchPosts(); // Revert on error
       }
+    }
+  };
+
+  const handleDuplicatePost = async (post: Post) => {
+    if (!currentClient) return;
+
+    // Create a new post with the same content but as Draft
+    const newPost: Post = {
+      id: crypto.randomUUID(),
+      client_id: currentClient.id,
+      title: post.title,
+      imageDescription: post.imageDescription,
+      imageUrl: post.imageUrl,
+      mediaType: post.mediaType,
+      status: 'Draft',
+      generatedCaption: post.generatedCaption,
+      generatedHashtags: post.generatedHashtags,
+      date: post.date,
+      notes: ''
+    };
+
+    // Optimistic update - add new post after the original
+    const postIndex = posts.findIndex(p => p.id === post.id);
+    const newPosts = [...posts];
+    newPosts.splice(postIndex + 1, 0, newPost);
+    setPosts(newPosts);
+
+    // Save to database
+    const { error } = await supabase
+      .from('posts')
+      .insert({
+        id: newPost.id,
+        client_id: newPost.client_id,
+        title: newPost.title,
+        image_description: newPost.imageDescription,
+        image_url: newPost.imageUrl,
+        media_type: newPost.mediaType,
+        status: newPost.status,
+        generated_caption: newPost.generatedCaption,
+        generated_hashtags: newPost.generatedHashtags,
+        date: newPost.date,
+        notes: newPost.notes
+      });
+
+    if (error) {
+      console.error('Error duplicating post:', error);
+      fetchPosts(); // Revert on error
     }
   };
 
@@ -1700,13 +1747,22 @@ Heath`
                                         onChange={(e) => handleUpdatePost(post.id, 'date', e.target.value)}
                                         className="w-full bg-transparent font-medium text-stone-600 focus:outline-none focus:text-brand-dark cursor-pointer border border-transparent hover:border-brand-green rounded px-2 py-1 transition-colors"
                                     />
-                                    <button
-                                        onClick={() => handleDeletePost(post.id)}
-                                        className="text-stone-300 hover:text-red-500 transition-colors p-1"
-                                        title="Delete Post"
-                                    >
-                                        <Trash2 className="w-3 h-3" />
-                                    </button>
+                                    <div className="flex gap-1">
+                                      <button
+                                          onClick={() => handleDuplicatePost(post)}
+                                          className="text-stone-300 hover:text-brand-green transition-colors p-1"
+                                          title="Duplicate Post"
+                                      >
+                                          <Copy className="w-3 h-3" />
+                                      </button>
+                                      <button
+                                          onClick={() => handleDeletePost(post.id)}
+                                          className="text-stone-300 hover:text-red-500 transition-colors p-1"
+                                          title="Delete Post"
+                                      >
+                                          <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </div>
                                 </div>
                             </td>
 
