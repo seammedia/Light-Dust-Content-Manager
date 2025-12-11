@@ -60,15 +60,14 @@ const getWeeklyStatusInfo = (posts: Post[], today: Date): WeeklyStatusInfo => {
   }
 
   // Check for outstanding posts:
-  // 1. Past date and not posted (overdue)
-  // 2. Any post still "For Approval" in the current week view (should have been approved by now)
+  // ONLY posts where the date has PASSED (before today) and not posted are outstanding
   const hasOutstanding = posts.some(post => {
     const postDate = post.date;
+    const isPastDate = postDate < todayStr; // Date is before today
     const notPosted = post.status !== 'Posted';
-    const needsApproval = post.status === 'For Approval';
 
-    // Outstanding if: past date and not posted, OR still awaiting approval (should be approved by now)
-    return (postDate < todayStr && notPosted) || needsApproval;
+    // Outstanding ONLY if: date has passed AND not posted
+    return isPastDate && notPosted;
   });
 
   if (hasOutstanding) {
