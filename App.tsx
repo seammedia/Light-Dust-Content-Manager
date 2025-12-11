@@ -555,7 +555,8 @@ export default function App() {
       .from('posts')
       .select('*')
       .eq('client_id', currentClient.id)
-      .order('date', { ascending: true });
+      .order('date', { ascending: true })
+      .order('created_at', { ascending: true });
 
     if (error) {
       console.error('Error fetching posts:', error);
