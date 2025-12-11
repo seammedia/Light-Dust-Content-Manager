@@ -425,6 +425,13 @@ function CalendarView({ posts, selectedMonth }: { posts: Post[], selectedMonth: 
   );
 }
 
+// Helper to detect if URL is a video
+const isVideoUrl = (url: string | undefined): boolean => {
+  if (!url) return false;
+  const urlLower = url.toLowerCase();
+  return urlLower.includes('.mp4') || urlLower.includes('.mov') || urlLower.includes('.webm') || urlLower.includes('.m4v');
+};
+
 // Map DB columns (snake_case) to App types (camelCase)
 const mapDbToPost = (dbPost: any): Post => ({
   id: dbPost.id,
@@ -1686,7 +1693,7 @@ Heath`
                                     >
                                         {post.imageUrl ? (
                                             <>
-                                                {post.mediaType === 'video' ? (
+                                                {(post.mediaType === 'video' || isVideoUrl(post.imageUrl)) ? (
                                                   <video
                                                     src={post.imageUrl + '#t=0.5'}
                                                     className="w-full h-full object-cover"
@@ -1710,7 +1717,7 @@ Heath`
                                                   />
                                                 )}
                                                 {/* Video indicator */}
-                                                {post.mediaType === 'video' && (
+                                                {(post.mediaType === 'video' || isVideoUrl(post.imageUrl)) && (
                                                     <div className="absolute top-2 left-2 bg-black/70 text-white text-[10px] font-medium px-2 py-1 rounded flex items-center gap-1">
                                                         <Film className="w-3 h-3" />
                                                         VIDEO
@@ -1719,7 +1726,7 @@ Heath`
                                                 {/* Click to enlarge hint */}
                                                 <div className="absolute inset-0 bg-black/0 group-hover/image:bg-black/20 transition-colors flex items-center justify-center">
                                                     <div className="bg-white/90 text-stone-800 text-xs font-medium px-3 py-1.5 rounded shadow-sm opacity-0 group-hover/image:opacity-100 transform translate-y-1 group-hover/image:translate-y-0 transition-all">
-                                                        Click to {post.mediaType === 'video' ? 'preview' : 'enlarge'}
+                                                        Click to {(post.mediaType === 'video' || isVideoUrl(post.imageUrl)) ? 'preview' : 'enlarge'}
                                                     </div>
                                                 </div>
                                             </>
@@ -1757,7 +1764,7 @@ Heath`
                                           disabled={post.status === 'Posted'}
                                         />
                                         <Upload className="w-3.5 h-3.5" />
-                                        {post.imageUrl ? (post.mediaType === 'video' ? 'Change Video' : 'Change Image') : 'Upload Media'}
+                                        {post.imageUrl ? ((post.mediaType === 'video' || isVideoUrl(post.imageUrl)) ? 'Change Video' : 'Change Image') : 'Upload Media'}
                                     </label>
                                 </div>
                             </td>
