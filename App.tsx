@@ -282,8 +282,10 @@ const getAustralianHolidays = (year: number): Record<string, string> => {
 };
 
 // Calendar View Component
-function CalendarView({ posts, selectedMonth }: { posts: Post[], selectedMonth: Date }) {
+function CalendarView({ posts, selectedMonth, onUpdatePostDate }: { posts: Post[], selectedMonth: Date, onUpdatePostDate?: (postId: string, newDate: string) => void }) {
   const [currentMonth, setCurrentMonth] = useState(selectedMonth);
+  const [draggedPost, setDraggedPost] = useState<Post | null>(null);
+  const [dragOverDate, setDragOverDate] = useState<string | null>(null);
 
   // Sync with parent selectedMonth
   useEffect(() => {
@@ -363,9 +365,27 @@ function CalendarView({ posts, selectedMonth }: { posts: Post[], selectedMonth: 
             const day = i + 1;
             const dayPosts = getPostsForDate(day);
             const holiday = getHolidayForDate(day);
+            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            const isDragOver = dragOverDate === dateStr;
 
             return (
-              <div key={day} className={`border rounded min-h-[100px] p-2 hover:bg-stone-50 transition-colors ${holiday ? 'border-red-200 bg-red-50/30' : 'border-stone-200'}`}>
+              <div
+                key={day}
+                className={`border rounded min-h-[100px] p-2 transition-colors ${holiday ? 'border-red-200 bg-red-50/30' : 'border-stone-200'} ${isDragOver ? 'bg-brand-green/20 border-brand-green border-2' : 'hover:bg-stone-50'}`}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOverDate(dateStr);
+                }}
+                onDragLeave={() => setDragOverDate(null)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOverDate(null);
+                  if (draggedPost && onUpdatePostDate && draggedPost.date !== dateStr) {
+                    onUpdatePostDate(draggedPost.id, dateStr);
+                  }
+                  setDraggedPost(null);
+                }}
+              >
                 <div className="flex items-center gap-1 mb-1">
                   <span className={`text-sm font-semibold ${holiday ? 'text-red-700' : 'text-stone-700'}`}>{day}</span>
                   {holiday && (
@@ -391,13 +411,23 @@ function CalendarView({ posts, selectedMonth }: { posts: Post[], selectedMonth: 
                       'Posted': { bg: 'bg-stone-200', text: 'text-stone-600', hoverBg: 'hover:bg-stone-300', noImgBg: 'bg-stone-300', noImgText: 'text-stone-500' },
                     };
                     const colors = statusColors[post.status] || statusColors['Draft'];
+                    const isDragging = draggedPost?.id === post.id;
 
                     return (
                       <div
                         key={post.id}
+                        draggable={post.status !== 'Posted'}
+                        onDragStart={(e) => {
+                          setDraggedPost(post);
+                          e.dataTransfer.effectAllowed = 'move';
+                        }}
+                        onDragEnd={() => {
+                          setDraggedPost(null);
+                          setDragOverDate(null);
+                        }}
                         onClick={() => setSelectedPost(post)}
-                        className={`flex items-start gap-1.5 text-xs p-1.5 rounded cursor-pointer ${colors.bg} ${colors.text} ${colors.hoverBg} transition-colors`}
-                        title={`${post.status}: ${post.generatedCaption || post.title}`}
+                        className={`flex items-start gap-1.5 text-xs p-1.5 rounded cursor-pointer ${colors.bg} ${colors.text} ${colors.hoverBg} transition-colors ${post.status !== 'Posted' ? 'cursor-grab active:cursor-grabbing' : ''} ${isDragging ? 'opacity-50' : ''}`}
+                        title={`${post.status}: ${post.generatedCaption || post.title}${post.status !== 'Posted' ? ' (drag to reschedule)' : ''}`}
                       >
                         {/* Thumbnail */}
                         {post.imageUrl ? (
@@ -1987,7 +2017,7 @@ Heath`
               </div>
             </>
           ) : (
-            <CalendarView posts={posts} selectedMonth={selectedMonth} />
+            <CalendarView posts={posts} selectedMonth={selectedMonth} onUpdatePostDate={(postId, newDate) => handleUpdatePost(postId, 'date', newDate)} />
           )}
           </>
           )}
