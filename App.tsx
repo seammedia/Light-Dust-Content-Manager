@@ -168,6 +168,7 @@ function PostDetailModal({ post, onClose }: { post: Post, onClose: () => void })
                   post.status === 'Posted' ? 'bg-stone-800 text-white' :
                   post.status === 'Approved' ? 'bg-brand-green text-white' :
                   post.status === 'For Approval' ? 'bg-amber-100 text-amber-800' :
+                  post.status === 'Revision' ? 'bg-red-100 text-red-800' :
                   'bg-stone-100 text-stone-600'
                 }`}>
                   {post.status}
@@ -385,6 +386,7 @@ function CalendarView({ posts, selectedMonth }: { posts: Post[], selectedMonth: 
                       'Draft': { bg: 'bg-stone-100', text: 'text-stone-600', hoverBg: 'hover:bg-stone-200', noImgBg: 'bg-stone-200', noImgText: 'text-stone-400' },
                       'Generated': { bg: 'bg-purple-100', text: 'text-purple-800', hoverBg: 'hover:bg-purple-200', noImgBg: 'bg-purple-200', noImgText: 'text-purple-400' },
                       'For Approval': { bg: 'bg-amber-100', text: 'text-amber-800', hoverBg: 'hover:bg-amber-200', noImgBg: 'bg-amber-200', noImgText: 'text-amber-500' },
+                      'Revision': { bg: 'bg-red-100', text: 'text-red-800', hoverBg: 'hover:bg-red-200', noImgBg: 'bg-red-200', noImgText: 'text-red-500' },
                       'Approved': { bg: 'bg-emerald-100', text: 'text-emerald-800', hoverBg: 'hover:bg-emerald-200', noImgBg: 'bg-emerald-200', noImgText: 'text-emerald-500' },
                       'Posted': { bg: 'bg-stone-200', text: 'text-stone-600', hoverBg: 'hover:bg-stone-300', noImgBg: 'bg-stone-300', noImgText: 'text-stone-500' },
                     };
@@ -1374,16 +1376,15 @@ export default function App() {
       case 'Posted': return 'bg-stone-800 text-white border-stone-800';
       case 'Approved': return 'bg-brand-green text-white border-brand-green';
       case 'For Approval': return 'bg-amber-100 text-amber-800 border-amber-200';
+      case 'Revision': return 'bg-red-100 text-red-800 border-red-200';
       case 'Generated': return 'bg-blue-50 text-blue-700 border-blue-200';
       default: return 'bg-stone-100 text-stone-600 border-stone-200';
     }
   };
 
-  // Filter posts by selected month and hide drafts from non-master accounts
+  // Filter posts by selected month
   const filteredPosts = posts.filter(post => {
     if (!post.date) return false;
-    // Hide Draft posts from clients (non-master accounts)
-    if (!isMasterAccount && post.status === 'Draft') return false;
     const postDate = new Date(post.date);
     return postDate.getMonth() === selectedMonth.getMonth() &&
            postDate.getFullYear() === selectedMonth.getFullYear();
@@ -1916,6 +1917,7 @@ Heath`
                                         >
                                             <option value="Draft">Draft</option>
                                             <option value="For Approval">For Approval</option>
+                                            <option value="Revision">Revision</option>
                                             <option value="Approved">Approved</option>
                                             <option value="Posted">Posted</option>
                                         </select>
@@ -1985,7 +1987,7 @@ Heath`
               </div>
             </>
           ) : (
-            <CalendarView posts={isMasterAccount ? posts : posts.filter(p => p.status !== 'Draft')} selectedMonth={selectedMonth} />
+            <CalendarView posts={posts} selectedMonth={selectedMonth} />
           )}
           </>
           )}

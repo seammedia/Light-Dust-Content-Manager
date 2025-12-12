@@ -39,7 +39,7 @@ export interface Post {
   imageDescription: string;
   imageUrl?: string; // URL or base64 - used for both images and videos
   mediaType?: MediaType; // Type of media: 'image' or 'video'
-  status: 'Draft' | 'Generated' | 'For Approval' | 'Approved' | 'Posted';
+  status: 'Draft' | 'Generated' | 'For Approval' | 'Revision' | 'Approved' | 'Posted';
   generatedCaption?: string;
   generatedHashtags?: string[];
   date: string;
