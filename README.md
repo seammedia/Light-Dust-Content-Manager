@@ -32,6 +32,7 @@ A multi-client social content management platform where agencies can manage mult
 - ☁️ **Supabase Storage** - Images stored as public URLs for social media compatibility
 - 🧹 **Auto Cleanup** - Old images automatically deleted after 60 days to save storage
 - 📬 **Client Notes Notifications** - Email alerts when clients add feedback (via Resend)
+- 🔑 **Persistent Login** - Browser remembers login for 30 days (no need to re-enter PIN)
 
 ## Setup Instructions
 
@@ -269,7 +270,7 @@ See `CLIENT-PINS.md` for all client access credentials.
 ## Usage
 
 ### Master Account (Agency):
-1. **Login** - Enter PIN `1991`
+1. **Login** - Enter PIN `1991` (browser remembers for 30 days)
 2. **Select Client** - Choose which client to manage from the selector
 3. **Switch Clients** - Click "Switch Client" in the header anytime
 4. **Manage Content** - Full access to selected client's posts
@@ -278,9 +279,10 @@ See `CLIENT-PINS.md` for all client access credentials.
 7. **Email Client** - Click "Email Client" button to send review notification email directly from dashboard
 8. **Connect Gmail** - Click floating button (bottom-right) to connect Gmail for sending emails
 9. **Schedule Posts** - Click "Schedule Posts" button to schedule all approved posts to connected social media platforms via Late API
+10. **Logout** - Click the logout icon (top-right) to clear session and return to login
 
 ### Client Account:
-1. **Login** - Enter your unique PIN (e.g., `5678` for Light Dust)
+1. **Login** - Enter your unique PIN (e.g., `5678` for Light Dust) - browser remembers for 30 days
 2. **View Posts** - Automatically shows your content calendar
 3. **Switch Views** - Toggle between Table View and Calendar View
 4. **Filter Months** - Click month tabs to see different months
@@ -615,7 +617,28 @@ The content manager integrates with [Late API](https://getlate.dev) for scheduli
 
 ## Development History
 
-### Recent Updates (2025-12-11)
+### Recent Updates (2025-12-18)
+
+1. **Persistent Login (30-Day Sessions)** - Browser remembers login for 30 days
+   - Sessions saved to browser localStorage with automatic expiry
+   - Auto-login on return visits within 30 days (no PIN required)
+   - Master account remembers which client was selected
+   - Loading screen shown while restoring session
+   - Logout button added to header (top-right, door icon)
+   - Click logout to clear session and return to login screen
+
+2. **Drag and Drop Calendar Rescheduling** - Easily reschedule posts by dragging
+   - Drag any post in Calendar View to a different date
+   - Visual feedback shows where post will be dropped
+   - Date updates automatically in database
+   - Works for all post statuses
+
+3. **Revision Status** - New status option for client feedback
+   - Added "Revision" status for posts that need changes
+   - Shows in red to indicate action needed
+   - Useful when client provides feedback requiring updates
+
+### Updates (2025-12-11)
 
 1. **Client-Specific Social Account Assignment** - Assign specific Late social profiles to each client
    - Open Client Notes and scroll to "Social Media Accounts" section
