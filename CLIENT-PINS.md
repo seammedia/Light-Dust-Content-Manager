@@ -43,6 +43,12 @@ Before these PINs will work, you MUST run the SQL migration in Supabase!
 - Brand: Car wash services
 - Contact: Sal (sally@cwsa.com.au)
 
+### Flagworks
+- PIN: `191816`
+- Access: Flagworks content only
+- Brand: Flagworks
+- Contact: Steve (info@flagworks.com.au)
+
 ---
 
 ## Adding New Clients

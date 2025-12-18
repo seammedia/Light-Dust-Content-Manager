@@ -5,7 +5,7 @@ import { MetaSettings } from './src/components/MetaSettings';
 import { ClientManagement } from './components/ClientManagement';
 import { GeneratePostsModal } from './components/GeneratePostsModal';
 import { supabase } from './services/supabaseClient';
-import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles, Mail, Clock, Send, FileText, Image, Film, X, LayoutGrid, HardDrive } from 'lucide-react';
+import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles, Mail, Clock, Send, FileText, Image, Film, X, LayoutGrid, HardDrive, LogOut } from 'lucide-react';
 import { generateCaptionFromImage, updateFromFeedback, generateImageFromFeedback } from './services/geminiService';
 import { isGmailConnected, getConnectedEmail, connectGmail, sendEmail, clearGmailSettings } from './services/gmailService';
 import { isDriveConnected, getDriveEmail, connectDrive, clearDriveSettings } from './services/driveService';
@@ -505,11 +505,48 @@ const mapPostToDb = (post: Partial<Post>) => {
   return dbObj;
 };
 
+// Session storage constants
+const SESSION_KEY = 'seam_media_session';
+const SESSION_EXPIRY_DAYS = 30;
+
+interface StoredSession {
+  pin: string;
+  clientId?: string;
+  isMaster: boolean;
+  expiry: number;
+}
+
+const saveSession = (pin: string, clientId: string | undefined, isMaster: boolean) => {
+  const expiry = Date.now() + (SESSION_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+  const session: StoredSession = { pin, clientId, isMaster, expiry };
+  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+};
+
+const getStoredSession = (): StoredSession | null => {
+  try {
+    const stored = localStorage.getItem(SESSION_KEY);
+    if (!stored) return null;
+    const session: StoredSession = JSON.parse(stored);
+    if (Date.now() > session.expiry) {
+      localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+    return session;
+  } catch {
+    return null;
+  }
+};
+
+const clearSession = () => {
+  localStorage.removeItem(SESSION_KEY);
+};
+
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState(false);
   const [configError, setConfigError] = useState(false);
+  const [isRestoringSession, setIsRestoringSession] = useState(true);
 
   // Multi-client state
   const [currentClient, setCurrentClient] = useState<Client | null>(null);
@@ -576,6 +613,82 @@ export default function App() {
       console.error("Missing Environment Variables");
       setConfigError(true);
     }
+  }, []);
+
+  // Restore session from localStorage on load
+  useEffect(() => {
+    const restoreSession = async () => {
+      const session = getStoredSession();
+      if (!session) {
+        setIsRestoringSession(false);
+        return;
+      }
+
+      try {
+        if (session.isMaster) {
+          // Restore master account session
+          const { data: allClientsData } = await supabase
+            .from('clients')
+            .select('*')
+            .order('name');
+
+          if (allClientsData) {
+            setAllClients(allClientsData);
+            setIsMasterAccount(true);
+            setIsAuthenticated(true);
+
+            // If master had selected a client, restore that too
+            if (session.clientId) {
+              const client = allClientsData.find(c => c.id === session.clientId);
+              if (client) {
+                setCurrentClient(client);
+                setBrandContext({
+                  name: client.brand_name,
+                  mission: client.brand_mission || '',
+                  tone: client.brand_tone || '',
+                  keywords: client.brand_keywords || []
+                });
+              } else {
+                // Client not found, show selector
+                setShowClientSelector(true);
+              }
+            } else {
+              // No client selected, show selector
+              setShowClientSelector(true);
+            }
+          }
+        } else if (session.clientId) {
+          // Restore regular client session
+          const { data: clients } = await supabase
+            .from('clients')
+            .select('*')
+            .eq('id', session.clientId);
+
+          if (clients && clients.length > 0) {
+            const client = clients[0];
+            setCurrentClient(client);
+            setBrandContext({
+              name: client.brand_name,
+              mission: client.brand_mission || '',
+              tone: client.brand_tone || '',
+              keywords: client.brand_keywords || []
+            });
+            setIsMasterAccount(false);
+            setIsAuthenticated(true);
+          } else {
+            // Client not found, clear session
+            clearSession();
+          }
+        }
+      } catch (error) {
+        console.error('Error restoring session:', error);
+        clearSession();
+      }
+
+      setIsRestoringSession(false);
+    };
+
+    restoreSession();
   }, []);
 
   // Fetch posts from Supabase
@@ -658,6 +771,8 @@ export default function App() {
             setAllClients(allClientsData);
             setShowClientSelector(true);
           }
+          // Save master session (no client selected yet)
+          saveSession(passwordInput, undefined, true);
         } else {
           // Regular client login
           setIsMasterAccount(false);
@@ -668,6 +783,8 @@ export default function App() {
             tone: client.brand_tone || '',
             keywords: client.brand_keywords || []
           });
+          // Save client session
+          saveSession(passwordInput, client.id, false);
         }
 
         setIsAuthenticated(true);
@@ -692,6 +809,22 @@ export default function App() {
       keywords: client.brand_keywords || []
     });
     setShowClientSelector(false);
+    // Update session with selected client (for master account)
+    if (isMasterAccount) {
+      saveSession('1991', client.id, true);
+    }
+  };
+
+  const handleLogout = () => {
+    clearSession();
+    setIsAuthenticated(false);
+    setCurrentClient(null);
+    setIsMasterAccount(false);
+    setAllClients([]);
+    setShowClientSelector(false);
+    setBrandContext(null);
+    setPosts([]);
+    setPasswordInput('');
   };
 
   const handleUpdatePost = useCallback(async (id: string, field: keyof Post, value: any) => {
@@ -1449,6 +1582,21 @@ export default function App() {
     );
   }
 
+  // Show loading while restoring session
+  if (isRestoringSession) {
+    return (
+      <div className="min-h-screen bg-[#F5F5F0] flex items-center justify-center p-4">
+        <div className="bg-white p-10 rounded-xl shadow-2xl max-w-md w-full border border-stone-200 text-center">
+          <div className="w-16 h-16 bg-brand-green rounded-full flex items-center justify-center mx-auto mb-6 text-white shadow-lg">
+            <Loader2 className="w-8 h-8 animate-spin" />
+          </div>
+          <h1 className="font-serif text-2xl text-brand-dark">Loading...</h1>
+          <p className="text-stone-500 mt-2">Restoring your session</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-[#F5F5F0] flex items-center justify-center p-4">
@@ -1458,11 +1606,11 @@ export default function App() {
             </div>
             <h1 className="font-serif text-3xl text-brand-dark mb-2">Client Access</h1>
             <p className="text-stone-500 mb-8 font-light">Please enter the password to view the <span className="font-semibold text-brand-green">Seam Media</span> content manager.</p>
-            
+
             <form onSubmit={handleLogin} className="space-y-4">
                 <div className="relative">
-                  <input 
-                      type="password" 
+                  <input
+                      type="password"
                       value={passwordInput}
                       onChange={(e) => setPasswordInput(e.target.value)}
                       placeholder="Enter Password"
@@ -1475,8 +1623,8 @@ export default function App() {
                     Incorrect password. Please try again.
                   </div>
                 )}
-                <button 
-                    type="submit" 
+                <button
+                    type="submit"
                     className="w-full bg-brand-dark text-white font-medium py-3 rounded-lg hover:bg-black transition-all shadow-md active:scale-[0.98]"
                 >
                     Enter Portal
@@ -1547,6 +1695,13 @@ export default function App() {
               className="bg-brand-dark hover:bg-black text-white px-4 py-2 rounded-md flex items-center gap-2 text-sm font-medium transition-colors shadow-sm"
             >
               <Plus className="w-4 h-4" /> Add Post
+            </button>
+            <button
+              onClick={handleLogout}
+              className="text-stone-400 hover:text-red-500 p-2 transition-colors"
+              title="Logout"
+            >
+              <LogOut className="w-4 h-4" />
             </button>
           </div>
         </div>
