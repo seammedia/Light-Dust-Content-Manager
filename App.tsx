@@ -282,7 +282,7 @@ const getAustralianHolidays = (year: number): Record<string, string> => {
 };
 
 // Calendar View Component
-function CalendarView({ posts, selectedMonth, onUpdatePostDate }: { posts: Post[], selectedMonth: Date, onUpdatePostDate?: (postId: string, newDate: string) => void }) {
+function CalendarView({ posts, selectedMonth, onUpdatePostDate, onAddPost }: { posts: Post[], selectedMonth: Date, onUpdatePostDate?: (postId: string, newDate: string) => void, onAddPost?: (date: string) => void }) {
   const [currentMonth, setCurrentMonth] = useState(selectedMonth);
   const [draggedPost, setDraggedPost] = useState<Post | null>(null);
   const [dragOverDate, setDragOverDate] = useState<string | null>(null);
@@ -371,7 +371,8 @@ function CalendarView({ posts, selectedMonth, onUpdatePostDate }: { posts: Post[
             return (
               <div
                 key={day}
-                className={`border rounded min-h-[100px] p-2 transition-colors ${holiday ? 'border-red-200 bg-red-50/30' : 'border-stone-200'} ${isDragOver ? 'bg-brand-green/20 border-brand-green border-2' : 'hover:bg-stone-50'}`}
+                className={`border rounded min-h-[100px] p-2 transition-colors cursor-pointer ${holiday ? 'border-red-200 bg-red-50/30' : 'border-stone-200'} ${isDragOver ? 'bg-brand-green/20 border-brand-green border-2' : 'hover:bg-stone-50'}`}
+                onClick={() => onAddPost && onAddPost(dateStr)}
                 onDragOver={(e) => {
                   e.preventDefault();
                   setDragOverDate(dateStr);
@@ -425,7 +426,7 @@ function CalendarView({ posts, selectedMonth, onUpdatePostDate }: { posts: Post[
                           setDraggedPost(null);
                           setDragOverDate(null);
                         }}
-                        onClick={() => setSelectedPost(post)}
+                        onClick={(e) => { e.stopPropagation(); setSelectedPost(post); }}
                         className={`flex items-start gap-1.5 text-xs p-1.5 rounded cursor-pointer ${colors.bg} ${colors.text} ${colors.hoverBg} transition-colors ${post.status !== 'Posted' ? 'cursor-grab active:cursor-grabbing' : ''} ${isDragging ? 'opacity-50' : ''}`}
                         title={`${post.status}: ${post.generatedCaption || post.title}${post.status !== 'Posted' ? ' (drag to reschedule)' : ''}`}
                       >
@@ -553,6 +554,7 @@ export default function App() {
   const [isMasterAccount, setIsMasterAccount] = useState(false);
   const [allClients, setAllClients] = useState<Client[]>([]);
   const [showClientSelector, setShowClientSelector] = useState(false);
+  const [userClients, setUserClients] = useState<Client[]>([]); // Clients accessible by current non-master user
   const [showMetaSettings, setShowMetaSettings] = useState(false);
   const [brandContext, setBrandContext] = useState<BrandContext | null>(null);
 
@@ -560,6 +562,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
 
   const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [newPostDate, setNewPostDate] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [storageError, setStorageError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'table' | 'calendar'>('table');
@@ -657,26 +660,57 @@ export default function App() {
               setShowClientSelector(true);
             }
           }
-        } else if (session.clientId) {
-          // Restore regular client session
+        } else {
+          // Restore regular client session - fetch all clients with this PIN
           const { data: clients } = await supabase
             .from('clients')
             .select('*')
-            .eq('id', session.clientId);
+            .eq('pin', session.pin);
 
           if (clients && clients.length > 0) {
-            const client = clients[0];
-            setCurrentClient(client);
-            setBrandContext({
-              name: client.brand_name,
-              mission: client.brand_mission || '',
-              tone: client.brand_tone || '',
-              keywords: client.brand_keywords || []
-            });
+            setUserClients(clients);
             setIsMasterAccount(false);
             setIsAuthenticated(true);
+
+            if (session.clientId) {
+              // Restore previously selected client
+              const client = clients.find(c => c.id === session.clientId);
+              if (client) {
+                setCurrentClient(client);
+                setBrandContext({
+                  name: client.brand_name,
+                  mission: client.brand_mission || '',
+                  tone: client.brand_tone || '',
+                  keywords: client.brand_keywords || []
+                });
+              } else if (clients.length === 1) {
+                // Single client, use it
+                setCurrentClient(clients[0]);
+                setBrandContext({
+                  name: clients[0].brand_name,
+                  mission: clients[0].brand_mission || '',
+                  tone: clients[0].brand_tone || '',
+                  keywords: clients[0].brand_keywords || []
+                });
+              } else {
+                // Multiple clients, show selector
+                setShowClientSelector(true);
+              }
+            } else if (clients.length === 1) {
+              // Single client, use it
+              setCurrentClient(clients[0]);
+              setBrandContext({
+                name: clients[0].brand_name,
+                mission: clients[0].brand_mission || '',
+                tone: clients[0].brand_tone || '',
+                keywords: clients[0].brand_keywords || []
+              });
+            } else {
+              // Multiple clients, show selector
+              setShowClientSelector(true);
+            }
           } else {
-            // Client not found, clear session
+            // No clients found, clear session
             clearSession();
           }
         }
@@ -756,8 +790,6 @@ export default function App() {
       }
 
       if (clients && clients.length > 0) {
-        const client = clients[0];
-
         // Check if this is the master account (Seam Media)
         if (passwordInput === '1991') {
           setIsMasterAccount(true);
@@ -773,9 +805,21 @@ export default function App() {
           }
           // Save master session (no client selected yet)
           saveSession(passwordInput, undefined, true);
-        } else {
-          // Regular client login
+          setIsAuthenticated(true);
+          setLoginError(false);
+        } else if (clients.length > 1) {
+          // Multiple clients share this PIN - show client selector
           setIsMasterAccount(false);
+          setUserClients(clients);
+          setShowClientSelector(true);
+          saveSession(passwordInput, undefined, false);
+          setIsAuthenticated(true);
+          setLoginError(false);
+        } else {
+          // Single client login
+          const client = clients[0];
+          setIsMasterAccount(false);
+          setUserClients([client]);
           setCurrentClient(client);
           setBrandContext({
             name: client.brand_name,
@@ -785,10 +829,9 @@ export default function App() {
           });
           // Save client session
           saveSession(passwordInput, client.id, false);
+          setIsAuthenticated(true);
+          setLoginError(false);
         }
-
-        setIsAuthenticated(true);
-        setLoginError(false);
       } else {
         setLoginError(true);
         setPasswordInput('');
@@ -809,9 +852,10 @@ export default function App() {
       keywords: client.brand_keywords || []
     });
     setShowClientSelector(false);
-    // Update session with selected client (for master account)
-    if (isMasterAccount) {
-      saveSession('1991', client.id, true);
+    // Update session with selected client
+    const session = getStoredSession();
+    if (session) {
+      saveSession(session.pin, client.id, isMasterAccount);
     }
   };
 
@@ -821,6 +865,7 @@ export default function App() {
     setCurrentClient(null);
     setIsMasterAccount(false);
     setAllClients([]);
+    setUserClients([]);
     setShowClientSelector(false);
     setBrandContext(null);
     setPosts([]);
@@ -1660,7 +1705,7 @@ export default function App() {
                  Client Notes
                </button>
              )}
-             {isMasterAccount && (
+             {(isMasterAccount || userClients.length > 1) && (
                <button
                  onClick={() => setShowClientSelector(true)}
                  className="flex items-center gap-2 text-sm font-medium text-stone-600 hover:text-brand-green px-3 py-2 border border-stone-300 rounded-lg transition-colors"
@@ -1761,6 +1806,7 @@ export default function App() {
           <div className="flex gap-2 mb-4 overflow-x-auto">
             {Array.from({ length: 6 }, (_, i) => {
               const date = new Date();
+              date.setDate(1); // Set to 1st to avoid month overflow (e.g., Jan 31 -> Feb 31 = Mar 3)
               date.setMonth(date.getMonth() - 2 + i);
               const monthName = date.toLocaleString('default', { month: 'long' });
               const year = date.getFullYear();
@@ -2172,7 +2218,15 @@ Heath`
               </div>
             </>
           ) : (
-            <CalendarView posts={posts} selectedMonth={selectedMonth} onUpdatePostDate={(postId, newDate) => handleUpdatePost(postId, 'date', newDate)} />
+            <CalendarView
+              posts={posts}
+              selectedMonth={selectedMonth}
+              onUpdatePostDate={(postId, newDate) => handleUpdatePost(postId, 'date', newDate)}
+              onAddPost={(date) => {
+                setNewPostDate(date);
+                setIsEditorOpen(true);
+              }}
+            />
           )}
           </>
           )}
@@ -2185,7 +2239,7 @@ Heath`
               id: Date.now().toString(),
               client_id: currentClient.id,
               title: 'New Post',
-              date: new Date().toISOString().split('T')[0],
+              date: newPostDate || new Date().toISOString().split('T')[0],
               status: 'Draft',
               imageDescription: '',
               imageUrl: '',
@@ -2193,11 +2247,14 @@ Heath`
           brand={brandContext}
           clientId={currentClient.id}
           onUpdate={(p) => handleNewPost(p)}
-          onClose={() => setIsEditorOpen(false)}
+          onClose={() => {
+            setIsEditorOpen(false);
+            setNewPostDate(null);
+          }}
         />
       )}
 
-      {/* Client Selector Modal for Master Account */}
+      {/* Client Selector Modal for Master Account or Multi-Client Users */}
       {showClientSelector && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-8">
@@ -2207,11 +2264,13 @@ Heath`
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              {allClients.filter(c => c.pin !== '1991').map(client => (
+              {(isMasterAccount ? allClients.filter(c => c.pin !== '1991') : userClients).map(client => (
                 <button
                   key={client.id}
                   onClick={() => selectClient(client)}
-                  className="p-6 border-2 border-stone-300 rounded-lg hover:border-brand-green hover:bg-brand-green/5 transition-all text-left group"
+                  className={`p-6 border-2 rounded-lg hover:border-brand-green hover:bg-brand-green/5 transition-all text-left group ${
+                    currentClient?.id === client.id ? 'border-brand-green bg-brand-green/5' : 'border-stone-300'
+                  }`}
                 >
                   <h3 className="font-bold text-lg text-brand-dark group-hover:text-brand-green transition-colors">
                     {client.name}
