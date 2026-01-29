@@ -996,9 +996,10 @@ export default function App() {
         scheduledFor
       });
 
-      // Extract Late post ID from response
-      const latePostId = lateResponse?.id || undefined;
-      console.log(`Auto-scheduled post ${postId} to ${platforms.length} platform(s) for ${scheduledFor}`, latePostId ? `(Late ID: ${latePostId})` : '');
+      // Extract Late post ID from response - Late API may return id, postId, or nested data
+      console.log('Late API response:', JSON.stringify(lateResponse));
+      const latePostId = lateResponse?.id || lateResponse?.postId || lateResponse?.data?.id || lateResponse?.data?.postId || undefined;
+      console.log(`Auto-scheduled post ${postId} to ${platforms.length} platform(s) for ${scheduledFor}`, latePostId ? `(Late ID: ${latePostId})` : '(No Late ID in response)');
 
       // Update status to "Posted" and save Late post ID for future rescheduling
       setPosts(prev => prev.map(p => p.id === postId ? { ...p, status: 'Posted' as const, latePostId } : p));
