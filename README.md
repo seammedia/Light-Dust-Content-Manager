@@ -7,7 +7,7 @@ A multi-client social content management platform where agencies can manage mult
 - 👥 **Multi-Client Support** - Manage unlimited clients with isolated data
 - 🔐 **Master Account** - Agency access to switch between all clients
 - 📊 **Client Management Dashboard** - Weekly overview of all clients with color-coded status (Posted/Approved/Awaiting/Outstanding)
-- 📅 **Content Calendar** - Table view and visual calendar view
+- 📅 **Content Calendar** - Table view and visual calendar view with click-to-add posts
 - 🗓️ **Month Filtering** - Quick navigation between months
 - 🖼️ **Image & Video Upload** - Upload images or videos (mp4, mov, webm) with built-in date picker
 - 🎬 **Video Scheduling** - Schedule videos to Instagram (as Reels), Facebook, TikTok and more
@@ -294,7 +294,7 @@ See `CLIENT-PINS.md` for all client access credentials.
 
 ### Key Features:
 - **Date Picker**: Click date field to select dates easily (DD/MM/YYYY format)
-- **Calendar View**: Visual month view shows posts on scheduled dates
+- **Calendar View**: Visual month view shows posts on scheduled dates, click any date to add a post, drag posts to reschedule
 - **Month Filtering**: Quick navigation between past and future months
 - **Bulk Approval**: Approve all posts in a month with one click
 - **Real-time Sync**: Changes appear instantly for all users
@@ -617,7 +617,52 @@ The content manager integrates with [Late API](https://getlate.dev) for scheduli
 
 ## Development History
 
-### Recent Updates (2025-12-18)
+### Recent Updates (2026-01-22)
+
+1. **Canva MCP Workflow for Branded Templates**
+   - Integrated Canva MCP for clients with specific branded templates
+   - Workflow: Generate plain AI images → Export from Canva → Upload to Supabase
+   - Brand kit support: Use `brand_kit_id` parameter for on-brand designs
+   - Limitation: Canva AI doesn't perfectly match custom templates (logo position, text style)
+   - Best practice: Generate plain images, let user apply overlay manually in their Canva template
+
+2. **New Client Profile: Abercrombie Ridge**
+   - Country retreat/holiday home near Taralga, NSW
+   - Pet-friendly accommodation
+   - AI generates Australian bush landscapes, golden hour lighting
+   - Profile stored in `clients/abercrombie-ridge/profile.md`
+
+3. **Washco Express Content Workflow**
+   - Uses Canva brand kit "Wash Co" for font/color consistency
+   - Plain AI images uploaded to platform
+   - User adds logo badge + headline text manually in Canva template
+   - Mix of car wash and dog wash themed content
+
+4. **Client On-Hold Process**
+   - BLVD Drinks removed from platform (client paused)
+   - Local documentation preserved for when they return
+   - Script pattern: `scripts/remove-[client-name].mjs`
+
+5. **New Scripts Added**
+   - `scripts/add-washco-feb-posts.mjs` - Washco Express February content
+   - `scripts/add-abercrombie-feb-posts.mjs` - Abercrombie Ridge February content
+   - `scripts/remove-blvd-drinks.mjs` - Remove client from platform
+
+### Updates (2026-01-20)
+
+1. **Click-to-Add Posts in Calendar View** - Quickly add posts by clicking on any date
+   - Click anywhere on a date cell in Calendar View to add a new post for that date
+   - Post Editor opens with the clicked date pre-selected
+   - Clicking on existing posts still opens post details (doesn't trigger add)
+   - Works alongside drag-and-drop rescheduling
+
+**Deployment Note:** This project deploys to `seam-media-content-manager` on Vercel. To deploy:
+```bash
+vercel link --yes --project seam-media-content-manager
+vercel --prod
+```
+
+### Updates (2025-12-18)
 
 1. **Persistent Login (30-Day Sessions)** - Browser remembers login for 30 days
    - Sessions saved to browser localStorage with automatic expiry
@@ -938,6 +983,233 @@ See `META-SETUP.md` for complete step-by-step instructions.
 - Light Dust Candles Page ID: `757104097499888`
 - Access Token expires - needs to be refreshed periodically
 - Instagram Account ID: Pending (need App Review approval to access)
+
+## Claude Code Content Creation
+
+Automate post creation using Claude Code with AI-generated captions, hashtags, and images.
+
+### Folder Structure
+
+```
+clients/
+  client-name/
+    profile.md          # Brand voice, services, hashtags, learnings
+    assets/             # Logo files, brand templates
+      logo.png
+      logo-white.png
+  TEMPLATE.md           # Template for new clients
+scripts/
+  create-posts.mjs      # Main post creation script
+```
+
+### Client Profile Setup
+
+Each client has a `profile.md` with:
+- **Brand voice & tone** - How to write captions
+- **Services/products** - What to promote
+- **Visual style** - Image guidelines
+- **Hashtags** - Commonly used tags
+- **Learnings** - What works/doesn't work for AI generation
+
+### Creating Posts with Claude Code
+
+**Basic usage:**
+```bash
+VITE_SUPABASE_URL="https://xxx.supabase.co" \
+VITE_SUPABASE_ANON_KEY="your_key" \
+VITE_GEMINI_API_KEY="your_gemini_key" \
+node scripts/create-posts.mjs \
+  --client "Client Name" \
+  --dates "2026-02-01,2026-02-03,2026-02-05" \
+  --topics "Topic 1,Topic 2,Topic 3"
+```
+
+**Or just ask Claude Code:**
+> "Create 3 posts for Pace Electrical for Feb 15, 18, and 22 about LED lighting, smoke alarms, and power points"
+
+### Image Generation Options
+
+| Client Type | Image Source | Example |
+|-------------|--------------|---------|
+| **E-commerce** | Download from client's website (Shopify CDN) | Mabii Co |
+| **Service Business** | AI-generated via Gemini 3 Pro Image | Pace Electrical |
+| **Finance/Corporate** | AI-generated stock-style photos | Efficient Finance |
+| **Hospitality/Retreat** | AI-generated landscape/interior photos | Abercrombie Ridge |
+| **Branded Template** | Canva MCP + plain AI base images | Washco Express |
+
+### AI Image Guidelines (Learnings)
+
+**DO:**
+- Use explicit, detailed prompts
+- Specify "no logos, no text, no branding"
+- Focus on THE ASSET or PRODUCT, not the business
+- Include "Australian setting" for local relevance
+- Use "stock photography style" for clean results
+
+**DON'T:**
+- Let AI add fake logos or branding to images
+- Mix up client contexts (keep prompts client-specific)
+- Use generic prompts like "business image"
+- Include workers/tradespeople unless relevant
+
+### Client-Specific Learnings
+
+**Pace Electrical (Service Business):**
+- Show the work result, not workers
+- Mention "25 years experience" in captions
+- Include phone number (1300 070 569) in ~50% of posts
+- Hashtags: #electrician #paceservices #licensedtrades
+
+**Efficient Finance (Finance Broker):**
+- Show THE ASSET being financed (boat, car, caravan)
+- NOT an electrical company - don't confuse with tradespeople
+- Clean stock photos without logos or text overlays
+- Focus on aspirational lifestyle imagery
+- Hashtags: #efficientfinance #assetfinance #boatfinance
+
+**Mabii Co (Kids Clothing):**
+- Use ACTUAL product photos from their website
+- Download from Shopify CDN, don't AI generate
+- Playful, warm tone with emojis
+- "Meet the [Product Name]" format
+- Address parent concerns (durability, washability)
+- Hashtags: #mabiikids #playapproved #toddlerlife
+
+**Washco Express (Car/Dog Wash):**
+- Has branded Canva template - DO NOT generate complete posts with AI
+- Generate plain base images only (no text, no logos)
+- User adds logo badge and headline text overlay manually in Canva
+- Mix of car wash and dog wash content (alternate themes)
+- Friendly, fun tone with emojis encouraged
+- Mention location: "Washco Express Broadmeadows"
+- Hashtags: #washcoexpress #carwash #dogwash #K9000 #broadmeadows
+
+**Abercrombie Ridge (Country Retreat):**
+- AI-generated Australian countryside/bush landscapes
+- Golden hour lighting, peaceful serene compositions
+- Pet-friendly content (dogs welcome)
+- Interior shots: cozy bedrooms with views, living spaces
+- Outdoor features: spa/hot tub, fire pit, walking trails
+- Peaceful, calming tone - "escape from the everyday"
+- Themes: sunrise/sunset, stargazing, nature walks, relaxation
+- Hashtags: #abercrombieridge #countryretreat #taralga #nswholidays
+
+### Post Status
+
+Posts are created with status **"For Approval"** (not Draft) so clients can review immediately.
+
+### Environment Variables Required
+
+```env
+VITE_SUPABASE_URL=https://xxx.supabase.co
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_GEMINI_API_KEY=your_gemini_api_key
+```
+
+### Adding a New Client
+
+1. Create folder: `clients/client-name/`
+2. Copy `clients/TEMPLATE.md` to `clients/client-name/profile.md`
+3. Fill in brand details, services, tone
+4. Add logo files to `assets/` folder
+5. Add client to Supabase database
+6. Test with a single post before bulk creation
+
+### Putting a Client on Hold
+
+When a client pauses their social media management:
+
+1. **Remove from platform** (keeps it clean for active clients):
+   ```javascript
+   // Run script or SQL to delete client and their posts from Supabase
+   // Example: scripts/remove-[client-name].mjs
+   ```
+
+2. **Keep local documentation** - Don't delete the `clients/client-name/` folder
+   - Profile.md contains brand voice, hashtags, learnings
+   - Useful when client returns
+
+3. **Update CLIENT-PINS.md** - Add note that client is on hold (optional)
+
+4. **Re-adding later** - Run SQL to recreate client:
+   ```sql
+   INSERT INTO clients (name, pin, contact_name, brand_name)
+   VALUES ('Client Name', 'XXXX', 'Contact', 'Brand');
+   ```
+
+### Canva MCP Integration (For Branded Templates)
+
+Some clients (e.g., Washco Express) have branded templates requiring text overlays and logos that AI can't generate directly. Use Canva MCP to create these.
+
+**Setup:**
+```bash
+claude mcp add --transport http Canva https://mcp.canva.com/mcp
+```
+
+**After adding:**
+1. Restart Claude Code
+2. First use will prompt browser authorization
+3. Click "Allow" to connect your Canva account
+
+**Canva MCP Capabilities:**
+- Search existing Canva designs
+- Create new designs from prompts
+- Autofill brand templates
+- Export designs as images/PDFs
+
+**Workflow for Branded Template Clients:**
+1. Client provides Canva template link (add to profile.md)
+2. Generate base images with AI (no text/logos)
+3. Use Canva MCP to apply branded overlay
+4. Export and upload to post
+
+**Client-Specific Notes:**
+
+**Washco Express (Car/Dog Wash):**
+- Has branded Canva template with blue tint, logo badge, headline text
+- Template link: https://www.canva.com/design/DAGouOYbdwo/edit (stored in profile.md)
+- Brand kit available in Canva: "Wash Co" (ID: kAG5FRdLFo8)
+- **Workflow Option 1 (Canva MCP):**
+  1. Generate designs with brand kit using `generate-design` tool
+  2. Export with `export-design` tool
+  3. Download and upload to Supabase
+  4. User manually adds logo/text overlay in Canva template
+- **Workflow Option 2 (Plain AI images):**
+  1. Generate plain images with Gemini (no text/logos)
+  2. Upload directly to platform
+  3. User downloads and applies overlay in Canva template manually
+- Content mix: Alternate car wash / dog wash themes
+- Headlines from profile: "Don't lift a finger", "Keep it glossy!", "Treat your best friend", etc.
+- Emojis encouraged: 🚗 🐶 ✨ 💦 🧼
+
+**Abercrombie Ridge (Country Retreat):**
+- Holiday home rental near Taralga, NSW (7272 Taralga Road, Curraweela 2580)
+- Pet-friendly accommodation - dogs welcome
+- AI generates Australian bush/countryside landscapes
+- Key themes: nature walks, outdoor spa, fire pit, stargazing, peaceful mornings
+- Golden hour lighting preferred (sunrise/sunset)
+- Interior shots: luxury bedrooms with views, cozy living spaces
+- Tone: Peaceful, calming, inviting - "escape from the everyday"
+- Headlines from their style: "Stroll. Relax. Enjoy.", "Peace Awaits Here", "Wake Up in Nature"
+- Profile stored in: `clients/abercrombie-ridge/profile.md`
+
+**Mediterranean Blu Spritz (Blue Wine):**
+- DO NOT include bottles in AI images (can't reproduce labels correctly)
+- Generate glasses of blue wine only for AI lifestyle shots
+- Use actual product photos from website when bottle is needed
+- Mediterranean summer aesthetic, golden hour lighting
+
+**Mabii Co (Kids Clothing):**
+- DO NOT use AI-generated images
+- Download actual product photos from their Shopify website
+- Use real product images to maintain authenticity
+
+**Flagworks (Australian Flags):**
+- Mix of website product images + AI-generated lifestyle shots
+- AI images: flags flying on poles, backyard scenes, blue sky
+- Website images: actual product photos from flagworks.com.au
+
+---
 
 ## Future Enhancements
 

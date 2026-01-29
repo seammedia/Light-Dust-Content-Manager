@@ -39,15 +39,28 @@ Before these PINs will work, you MUST run the SQL migration in Supabase!
 
 ### Washco Express
 - PIN: `4729`
-- Access: Washco Express content only
+- Access: Washco Express content only (shared PIN with CWSA)
 - Brand: Car wash services
 - Contact: Sal (sally@cwsa.com.au)
+
+### CWSA
+- PIN: `4729`
+- Access: CWSA content only (shared PIN with Washco Express)
+- Brand: Car wash services association
+- Contact: Sal (sally@cwsa.com.au)
+- Note: Sal can switch between Washco Express and CWSA using the "Switch Client" button
 
 ### Flagworks
 - PIN: `191816`
 - Access: Flagworks content only
 - Brand: Flagworks
 - Contact: Steve (info@flagworks.com.au)
+
+### Pace Electrical
+- PIN: `7834`
+- Access: Pace Electrical content only
+- Brand: Pace Electrical / Pace Services
+- Contact: Paul (service@paceservices.com.au)
 
 ---
 

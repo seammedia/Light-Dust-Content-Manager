@@ -64,9 +64,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // PUT - Update the post
+    // Use isDraft: false and publishNow: false to keep it scheduled (same as schedule endpoint)
     const updateBody: any = {
-      // Always keep status as scheduled when rescheduling
-      status: 'scheduled'
+      isDraft: false,
+      publishNow: false
     };
 
     if (scheduledFor) {
