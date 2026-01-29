@@ -910,9 +910,27 @@ export default function App() {
       } else if (isStatusChange && currentClient) {
         // Auto-post to social media when status changes to "Approved"
         await handleAutoPost(id);
-      } else if (isDateChange && currentPost?.latePostId) {
+      } else if (isDateChange) {
         // Reschedule in Late API if post was already scheduled
-        await handleReschedulePost(id, value);
+        // Check both local state and fetch from DB in case state is stale
+        const postFromState = posts.find(p => p.id === id);
+        let latePostId = postFromState?.latePostId;
+
+        // If not in state, check database directly
+        if (!latePostId) {
+          const { data } = await supabase
+            .from('posts')
+            .select('late_post_id')
+            .eq('id', id)
+            .single();
+          latePostId = data?.late_post_id;
+        }
+
+        if (latePostId) {
+          await handleReschedulePost(id, value);
+        } else {
+          console.log('No Late post ID found, skipping reschedule');
+        }
       }
 
       // Clean up timer reference
@@ -996,8 +1014,20 @@ export default function App() {
   // Reschedule a post in Late API when date changes
   const handleReschedulePost = async (postId: string, newDate: string) => {
     const post = posts.find(p => p.id === postId);
-    if (!post || !post.latePostId) {
-      console.log('No Late post ID found, skipping reschedule');
+    let latePostId = post?.latePostId;
+
+    // If not in local state, fetch from database
+    if (!latePostId) {
+      const { data } = await supabase
+        .from('posts')
+        .select('late_post_id')
+        .eq('id', postId)
+        .single();
+      latePostId = data?.late_post_id;
+    }
+
+    if (!latePostId) {
+      console.log('No Late post ID found in state or DB, skipping reschedule');
       return;
     }
 
@@ -1006,10 +1036,10 @@ export default function App() {
       const scheduledDateTime = `${newDate}T12:00:00`;
       const scheduledFor = new Date(scheduledDateTime).toISOString();
 
-      console.log(`Rescheduling post ${postId} (Late ID: ${post.latePostId}) to ${scheduledFor}`);
+      console.log(`Rescheduling post ${postId} (Late ID: ${latePostId}) to ${scheduledFor}`);
 
       await reschedulePost({
-        latePostId: post.latePostId,
+        latePostId: latePostId,
         scheduledFor,
         timezone: 'Australia/Sydney'
       });
