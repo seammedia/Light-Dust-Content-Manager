@@ -979,11 +979,11 @@ export default function App() {
       });
 
       // Extract Late post ID from response
-      const latePostId = lateResponse?.id || null;
+      const latePostId = lateResponse?.id || undefined;
       console.log(`Auto-scheduled post ${postId} to ${platforms.length} platform(s) for ${scheduledFor}`, latePostId ? `(Late ID: ${latePostId})` : '');
 
       // Update status to "Posted" and save Late post ID for future rescheduling
-      setPosts(prev => prev.map(p => p.id === postId ? { ...p, status: 'Posted', latePostId } : p));
+      setPosts(prev => prev.map(p => p.id === postId ? { ...p, status: 'Posted' as const, latePostId } : p));
       await supabase
         .from('posts')
         .update({ status: 'Posted', late_post_id: latePostId })
@@ -1187,7 +1187,7 @@ export default function App() {
           });
 
           // Save the Late post ID for future rescheduling
-          const latePostId = lateResponse?.id || null;
+          const latePostId = lateResponse?.id || undefined;
           successCount++;
 
           // Update post status and save Late post ID
