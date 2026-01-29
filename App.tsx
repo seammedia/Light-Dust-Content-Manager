@@ -9,7 +9,7 @@ import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, Re
 import { generateCaptionFromImage, updateFromFeedback, generateImageFromFeedback } from './services/geminiService';
 import { isGmailConnected, getConnectedEmail, connectGmail, sendEmail, clearGmailSettings } from './services/gmailService';
 import { isDriveConnected, getDriveEmail, connectDrive, clearDriveSettings } from './services/driveService';
-import { isLateConfigured, getProfiles, schedulePost, LateProfile } from './services/lateService';
+import { isLateConfigured, getProfiles, schedulePost, reschedulePost, LateProfile } from './services/lateService';
 import { uploadMedia, uploadImage, detectMediaType } from './services/storageService';
 
 // Debounced Textarea Component - prevents typing lag
@@ -487,7 +487,8 @@ const mapDbToPost = (dbPost: any): Post => ({
   mediaType: (dbPost.media_type as MediaType) || 'image',
   generatedCaption: dbPost.generated_caption || '',
   generatedHashtags: dbPost.generated_hashtags || [],
-  notes: dbPost.notes || ''
+  notes: dbPost.notes || '',
+  latePostId: dbPost.late_post_id || null
 });
 
 // Map App types to DB columns
@@ -503,6 +504,7 @@ const mapPostToDb = (post: Partial<Post>) => {
   if (post.generatedCaption !== undefined) dbObj.generated_caption = post.generatedCaption;
   if (post.generatedHashtags !== undefined) dbObj.generated_hashtags = post.generatedHashtags;
   if (post.notes !== undefined) dbObj.notes = post.notes;
+  if (post.latePostId !== undefined) dbObj.late_post_id = post.latePostId;
   return dbObj;
 };
 
@@ -876,6 +878,7 @@ export default function App() {
     // Get current post to detect status changes
     const currentPost = posts.find(p => p.id === id);
     const isStatusChange = field === 'status' && value === 'Approved' && currentPost?.status !== 'Approved';
+    const isDateChange = field === 'date' && currentPost?.date !== value;
 
     // Optimistic Update - immediate UI feedback
     setPosts(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
@@ -907,6 +910,9 @@ export default function App() {
       } else if (isStatusChange && currentClient) {
         // Auto-post to social media when status changes to "Approved"
         await handleAutoPost(id);
+      } else if (isDateChange && currentPost?.latePostId) {
+        // Reschedule in Late API if post was already scheduled
+        await handleReschedulePost(id, value);
       }
 
       // Clean up timer reference
@@ -964,7 +970,7 @@ export default function App() {
       }));
 
       // Schedule the post via Late API
-      await schedulePost({
+      const lateResponse = await schedulePost({
         platforms,
         content,
         mediaUrls: hasValidMedia ? [post.imageUrl!] : [],
@@ -972,16 +978,50 @@ export default function App() {
         scheduledFor
       });
 
-      console.log(`Auto-scheduled post ${postId} to ${platforms.length} platform(s) for ${scheduledFor}`);
+      // Extract Late post ID from response
+      const latePostId = lateResponse?.id || lateResponse?.postId || null;
+      console.log(`Auto-scheduled post ${postId} to ${platforms.length} platform(s) for ${scheduledFor}`, latePostId ? `(Late ID: ${latePostId})` : '');
 
-      // Update status to "Posted" after successful scheduling
-      setPosts(prev => prev.map(p => p.id === postId ? { ...p, status: 'Posted' } : p));
+      // Update status to "Posted" and save Late post ID for future rescheduling
+      setPosts(prev => prev.map(p => p.id === postId ? { ...p, status: 'Posted', latePostId } : p));
       await supabase
         .from('posts')
-        .update({ status: 'Posted' })
+        .update({ status: 'Posted', late_post_id: latePostId })
         .eq('id', postId);
     } catch (error) {
       console.error('Auto-schedule error:', error);
+    }
+  };
+
+  // Reschedule a post in Late API when date changes
+  const handleReschedulePost = async (postId: string, newDate: string) => {
+    const post = posts.find(p => p.id === postId);
+    if (!post || !post.latePostId) {
+      console.log('No Late post ID found, skipping reschedule');
+      return;
+    }
+
+    try {
+      // Build new scheduled datetime using new date + 12:00 PM
+      const scheduledDateTime = `${newDate}T12:00:00`;
+      const scheduledFor = new Date(scheduledDateTime).toISOString();
+
+      console.log(`Rescheduling post ${postId} (Late ID: ${post.latePostId}) to ${scheduledFor}`);
+
+      await reschedulePost({
+        latePostId: post.latePostId,
+        scheduledFor,
+        timezone: 'Australia/Sydney'
+      });
+
+      console.log(`Successfully rescheduled post ${postId} to ${newDate}`);
+    } catch (error: any) {
+      console.error('Reschedule error:', error);
+      // Don't show alert for every reschedule failure - just log it
+      // The post may have already been published or cancelled
+      if (error.message?.includes('not found') || error.message?.includes('published')) {
+        console.log('Post may have already been published or removed from Late');
+      }
     }
   };
 
@@ -1138,17 +1178,30 @@ export default function App() {
             platforms: platforms.map(p => p.platform),
           });
 
-          await schedulePost({
+          const lateResponse = await schedulePost({
             platforms,
             content,
             mediaUrls: post.imageUrl ? [post.imageUrl] : [],
             mediaType: mediaType,
             scheduledFor,
           });
+
+          // Save the Late post ID for future rescheduling
+          const latePostId = lateResponse?.id || lateResponse?.postId || null;
           successCount++;
 
-          // Update post status to "Posted" (or you could add a "Scheduled" status)
-          await handleUpdatePost(post.id, 'status', 'Posted');
+          // Update post status and save Late post ID
+          const { error: updateError } = await supabase
+            .from('posts')
+            .update({
+              status: 'Posted',
+              late_post_id: latePostId
+            })
+            .eq('id', post.id);
+
+          if (updateError) {
+            console.error('Error saving late_post_id:', updateError);
+          }
         } catch (error: any) {
           console.error(`Error scheduling post ${post.id}:`, error);
           const mediaInfo = post.mediaType === 'video' ? ' (video)' : ' (image)';

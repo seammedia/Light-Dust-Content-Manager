@@ -44,6 +44,7 @@ export interface Post {
   generatedHashtags?: string[];
   date: string;
   notes?: string;
+  latePostId?: string; // ID from Late API for rescheduling scheduled posts
 }
 
 export interface BrandContext {

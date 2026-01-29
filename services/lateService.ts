@@ -104,3 +104,46 @@ export const deleteScheduledPost = async (postId: string): Promise<void> => {
     throw new Error(error.error || `Failed to delete post: ${response.status}`);
   }
 };
+
+// Reschedule a post (update date/time) via Late API
+export interface RescheduleParams {
+  latePostId: string;
+  scheduledFor?: string; // ISO 8601 format
+  content?: string;
+  timezone?: string;
+}
+
+export const reschedulePost = async (params: RescheduleParams): Promise<{ success: boolean }> => {
+  const response = await fetch('/api/late-reschedule', {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(params),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || `Failed to reschedule post: ${response.status}`);
+  }
+
+  return response.json();
+};
+
+// Cancel a scheduled post via Late API
+export const cancelScheduledPost = async (latePostId: string): Promise<{ success: boolean }> => {
+  const response = await fetch('/api/late-reschedule', {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ latePostId }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || `Failed to cancel post: ${response.status}`);
+  }
+
+  return response.json();
+};
