@@ -979,7 +979,7 @@ export default function App() {
       });
 
       // Extract Late post ID from response
-      const latePostId = lateResponse?.id || lateResponse?.postId || null;
+      const latePostId = lateResponse?.id || null;
       console.log(`Auto-scheduled post ${postId} to ${platforms.length} platform(s) for ${scheduledFor}`, latePostId ? `(Late ID: ${latePostId})` : '');
 
       // Update status to "Posted" and save Late post ID for future rescheduling
@@ -1187,7 +1187,7 @@ export default function App() {
           });
 
           // Save the Late post ID for future rescheduling
-          const latePostId = lateResponse?.id || lateResponse?.postId || null;
+          const latePostId = lateResponse?.id || null;
           successCount++;
 
           // Update post status and save Late post ID
