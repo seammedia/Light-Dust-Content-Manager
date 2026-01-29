@@ -64,7 +64,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // PUT - Update the post
-    const updateBody: any = {};
+    const updateBody: any = {
+      // Always keep status as scheduled when rescheduling
+      status: 'scheduled'
+    };
 
     if (scheduledFor) {
       updateBody.scheduledFor = scheduledFor;
@@ -78,7 +81,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       updateBody.timezone = timezone;
     }
 
-    if (Object.keys(updateBody).length === 0) {
+    // We always have status, so just check if we have at least one update field
+    if (!scheduledFor && !content && !timezone) {
       return res.status(400).json({ error: 'No fields to update. Provide scheduledFor, content, or timezone.' });
     }
 
