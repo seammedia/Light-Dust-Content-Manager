@@ -37,7 +37,8 @@ export interface Post {
   client_id: string;
   title: string;
   imageDescription: string;
-  imageUrl?: string; // URL or base64 - used for both images and videos
+  imageUrl?: string; // URL or base64 - used for both images and videos (primary/first image)
+  imageUrls?: string[]; // Array of image URLs for carousel posts
   mediaType?: MediaType; // Type of media: 'image' or 'video'
   status: 'Draft' | 'Generated' | 'For Approval' | 'Revision' | 'Approved' | 'Posted';
   generatedCaption?: string;

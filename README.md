@@ -10,6 +10,7 @@ A multi-client social content management platform where agencies can manage mult
 - 📅 **Content Calendar** - Table view and visual calendar view with click-to-add posts
 - 🗓️ **Month Filtering** - Quick navigation between months
 - 🖼️ **Image & Video Upload** - Upload images or videos (mp4, mov, webm) with built-in date picker
+- 🎠 **Carousel Posts** - Upload multiple images for Instagram carousel posts with slideshow preview
 - 🎬 **Video Scheduling** - Schedule videos to Instagram (as Reels), Facebook, TikTok and more
 - 💬 **Client Comments** - Add notes and feedback
 - ✅ **Approval Workflow** - Track post status (Draft → For Approval → Approved → Posted)
@@ -465,11 +466,13 @@ posts
 ├── date (date)
 ├── status (text)
 ├── image_description (text)
-├── image_url (text)
+├── image_url (text) - primary/cover image URL
+├── image_urls (text[]) - array of image URLs for carousel posts
 ├── media_type (text) - 'image' or 'video'
 ├── generated_caption (text)
 ├── generated_hashtags (jsonb)
-└── notes (text)
+├── notes (text)
+└── late_post_id (text) - ID from Late API for rescheduling
 ```
 
 ### Key Improvements Made
@@ -663,19 +666,29 @@ CREATE INDEX IF NOT EXISTS idx_posts_late_post_id ON posts(late_post_id);
 
 ### Recent Updates (2026-01-30)
 
-1. **Post Rescheduling to Late API** - Sync date changes to scheduled posts
+1. **Carousel/Multi-Image Posts** - Support for Instagram carousel posts
+   - Upload multiple images for a single post (creates carousel)
+   - Table view shows primary image with thumbnail strip below for carousel posts
+   - Carousel indicator badge shows image count
+   - Click to view full carousel slideshow with navigation
+   - Calendar view shows carousel badge on posts with multiple images
+   - Post editor supports adding/removing/reordering images
+   - Database migration: `add-carousel-support-schema.sql`
+   - Videos cannot be mixed with images in carousel (single video only)
+
+2. **Post Rescheduling to Late API** - Sync date changes to scheduled posts
    - When dragging posts in calendar or editing dates, Late API is updated
    - Posts stay scheduled (don't become drafts) using `isDraft: false`
    - Late post ID stored in database for future updates
    - Database migration: `add-late-post-id-schema.sql`
 
-2. **Caption & Hashtag Sync to Late** - Edit content after scheduling
+3. **Caption & Hashtag Sync to Late** - Edit content after scheduling
    - Caption edits auto-sync to Late API (500ms debounce)
    - Hashtag edits auto-sync to Late API
    - Works for all clients with scheduled posts
    - Console logs show sync status
 
-3. **Washco Express Image Guidelines** - Client feedback learnings
+4. **Washco Express Image Guidelines** - Client feedback learnings
    - Added "Critical Learnings" section to profile.md
    - Image-caption matching rules documented
    - Touch-free messaging requirements
@@ -932,12 +945,15 @@ See `DEPLOYMENT.md` for detailed technical documentation of all improvements.
 - `add-notes-tracking.sql` - Client notes notification tracking columns
 - `add-video-support-schema.sql` - Video upload support (adds media_type column)
 - `add-late-post-id-schema.sql` - Late post ID for rescheduling support
+- `add-carousel-support-schema.sql` - Carousel/multi-image post support (adds image_urls column)
 
 ### Source Code
 - `App.tsx` - Main application with scheduling logic
 - `types.ts` - TypeScript interfaces including Meta credentials, Gmail settings
 - `components/ClientManagement.tsx` - Weekly client overview dashboard (agency-only)
 - `components/GeneratePostsModal.tsx` - Bulk AI post generation modal (agency-only)
+- `components/ImageCarousel.tsx` - Carousel slideshow component for multi-image posts
+- `components/PostEditor.tsx` - Post creation/editing modal with multi-image upload
 - `services/geminiService.ts` - AI caption generation and feedback processing
 - `services/gmailService.ts` - Gmail OAuth and email sending
 - `services/driveService.ts` - Google Drive OAuth and file fetching

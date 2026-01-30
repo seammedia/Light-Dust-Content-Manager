@@ -4,8 +4,9 @@ import { PostEditor } from './components/PostEditor';
 import { MetaSettings } from './src/components/MetaSettings';
 import { ClientManagement } from './components/ClientManagement';
 import { GeneratePostsModal } from './components/GeneratePostsModal';
+import { ImageCarousel, CarouselModal, CarouselThumbnails } from './components/ImageCarousel';
 import { supabase } from './services/supabaseClient';
-import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles, Mail, Clock, Send, FileText, Image, Film, X, LayoutGrid, HardDrive, LogOut } from 'lucide-react';
+import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles, Mail, Clock, Send, FileText, Image, Film, X, LayoutGrid, HardDrive, LogOut, Images } from 'lucide-react';
 import { generateCaptionFromImage, updateFromFeedback, generateImageFromFeedback } from './services/geminiService';
 import { isGmailConnected, getConnectedEmail, connectGmail, sendEmail, clearGmailSettings } from './services/gmailService';
 import { isDriveConnected, getDriveEmail, connectDrive, clearDriveSettings } from './services/driveService';
@@ -127,6 +128,12 @@ function DebouncedInput({
 
 // Post Detail Modal Component
 function PostDetailModal({ post, onClose }: { post: Post, onClose: () => void }) {
+  // Get all images (from imageUrls array or fallback to single imageUrl)
+  const allImages = post.imageUrls && post.imageUrls.length > 0
+    ? post.imageUrls
+    : (post.imageUrl ? [post.imageUrl] : []);
+  const hasCarousel = allImages.length > 1;
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-2xl max-w-5xl w-full" onClick={(e) => e.stopPropagation()}>
@@ -138,10 +145,15 @@ function PostDetailModal({ post, onClose }: { post: Post, onClose: () => void })
         </button>
 
         <div className="flex">
-          {/* Left side - Image/Video */}
+          {/* Left side - Image/Video/Carousel */}
           <div className="w-1/2 flex-shrink-0">
-            {post.imageUrl ? (
-              post.mediaType === 'video' ? (
+            {allImages.length > 0 ? (
+              hasCarousel ? (
+                <ImageCarousel
+                  images={allImages}
+                  className="w-full h-full min-h-[400px] rounded-l-xl"
+                />
+              ) : post.mediaType === 'video' ? (
                 <video
                   src={post.imageUrl}
                   className="w-full h-full object-cover rounded-l-xl"
@@ -173,6 +185,12 @@ function PostDetailModal({ post, onClose }: { post: Post, onClose: () => void })
                 }`}>
                   {post.status}
                 </span>
+                {hasCarousel && (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs font-medium">
+                    <Images className="w-3 h-3" />
+                    Carousel ({allImages.length})
+                  </span>
+                )}
                 <p className="text-sm text-stone-500">
                   {post.date ? (() => {
                     const [year, month, day] = post.date.split('-');
@@ -428,26 +446,43 @@ function CalendarView({ posts, selectedMonth, onUpdatePostDate, onAddPost }: { p
                         }}
                         onClick={(e) => { e.stopPropagation(); setSelectedPost(post); }}
                         className={`flex items-start gap-1.5 text-xs p-1.5 rounded cursor-pointer ${colors.bg} ${colors.text} ${colors.hoverBg} transition-colors ${post.status !== 'Posted' ? 'cursor-grab active:cursor-grabbing' : ''} ${isDragging ? 'opacity-50' : ''}`}
-                        title={`${post.status}: ${post.generatedCaption || post.title}${post.status !== 'Posted' ? ' (drag to reschedule)' : ''}`}
+                        title={`${post.status}: ${post.generatedCaption || post.title}${post.imageUrls && post.imageUrls.length > 1 ? ` (${post.imageUrls.length} images)` : ''}${post.status !== 'Posted' ? ' (drag to reschedule)' : ''}`}
                       >
-                        {/* Thumbnail */}
-                        {post.imageUrl ? (
-                          post.mediaType === 'video' ? (
-                            <div className="w-8 h-8 bg-stone-800 rounded flex-shrink-0 flex items-center justify-center">
-                              <Film className="w-4 h-4 text-white" />
+                        {/* Thumbnail with carousel indicator */}
+                        {(() => {
+                          const primaryImage = post.imageUrls && post.imageUrls.length > 0 ? post.imageUrls[0] : post.imageUrl;
+                          const hasCarousel = post.imageUrls && post.imageUrls.length > 1;
+
+                          if (primaryImage) {
+                            if (post.mediaType === 'video') {
+                              return (
+                                <div className="w-8 h-8 bg-stone-800 rounded flex-shrink-0 flex items-center justify-center relative">
+                                  <Film className="w-4 h-4 text-white" />
+                                </div>
+                              );
+                            }
+                            return (
+                              <div className="relative w-8 h-8 flex-shrink-0">
+                                <img
+                                  src={primaryImage}
+                                  alt=""
+                                  className="w-8 h-8 object-cover rounded"
+                                />
+                                {/* Carousel indicator badge */}
+                                {hasCarousel && (
+                                  <div className="absolute -top-1 -right-1 bg-purple-600 text-white text-[8px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center">
+                                    {post.imageUrls!.length}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className={`w-8 h-8 ${colors.noImgBg} rounded flex-shrink-0 flex items-center justify-center`}>
+                              <span className={`text-[10px] ${colors.noImgText}`}>No img</span>
                             </div>
-                          ) : (
-                            <img
-                              src={post.imageUrl}
-                              alt=""
-                              className="w-8 h-8 object-cover rounded flex-shrink-0"
-                            />
-                          )
-                        ) : (
-                          <div className={`w-8 h-8 ${colors.noImgBg} rounded flex-shrink-0 flex items-center justify-center`}>
-                            <span className={`text-[10px] ${colors.noImgText}`}>No img</span>
-                          </div>
-                        )}
+                          );
+                        })()}
                         {/* Caption snippet */}
                         <span className="line-clamp-2 leading-tight">{captionSnippet}</span>
                       </div>
@@ -484,6 +519,7 @@ const mapDbToPost = (dbPost: any): Post => ({
   status: dbPost.status as any,
   imageDescription: dbPost.image_description || '',
   imageUrl: dbPost.image_url || '',
+  imageUrls: dbPost.image_urls || [],
   mediaType: (dbPost.media_type as MediaType) || 'image',
   generatedCaption: dbPost.generated_caption || '',
   generatedHashtags: dbPost.generated_hashtags || [],
@@ -500,6 +536,7 @@ const mapPostToDb = (post: Partial<Post>) => {
   if (post.status !== undefined) dbObj.status = post.status;
   if (post.imageDescription !== undefined) dbObj.image_description = post.imageDescription;
   if (post.imageUrl !== undefined) dbObj.image_url = post.imageUrl;
+  if (post.imageUrls !== undefined) dbObj.image_urls = post.imageUrls;
   if (post.mediaType !== undefined) dbObj.media_type = post.mediaType;
   if (post.generatedCaption !== undefined) dbObj.generated_caption = post.generatedCaption;
   if (post.generatedHashtags !== undefined) dbObj.generated_hashtags = post.generatedHashtags;
@@ -583,6 +620,8 @@ export default function App() {
   const [emailBody, setEmailBody] = useState('');
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [previewImagePostId, setPreviewImagePostId] = useState<string | null>(null);
+  const [previewCarouselImages, setPreviewCarouselImages] = useState<string[] | null>(null);
+  const [previewCarouselIndex, setPreviewCarouselIndex] = useState(0);
 
   // Schedule Posts state
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -1503,30 +1542,64 @@ export default function App() {
   };
 
   const handleMediaChange = async (id: string, e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !currentClient) return;
+    const files = e.target.files;
+    if (!files || files.length === 0 || !currentClient) return;
 
-    // Detect media type
-    const mediaType = detectMediaType(file);
+    // Convert FileList to array
+    const fileArray = Array.from(files);
 
-    // Size limits: 500MB for videos, 10MB for images
-    const maxSize = mediaType === 'video' ? 500 * 1024 * 1024 : 10 * 1024 * 1024;
-    const maxSizeMB = maxSize / (1024 * 1024);
+    // Check if it's a single video or multiple images
+    const firstFile = fileArray[0];
+    const firstMediaType = detectMediaType(firstFile);
 
-    if (file.size > maxSize) {
-      alert(`File is too large. Please use a ${mediaType} under ${maxSizeMB}MB.`);
+    // If it's a video, only allow single file
+    if (firstMediaType === 'video' && fileArray.length > 1) {
+      alert('Videos cannot be part of a carousel. Please upload a single video or multiple images.');
       return;
+    }
+
+    // Validate all files
+    for (const file of fileArray) {
+      const mediaType = detectMediaType(file);
+      const maxSize = mediaType === 'video' ? 500 * 1024 * 1024 : 10 * 1024 * 1024;
+      const maxSizeMB = maxSize / (1024 * 1024);
+
+      if (file.size > maxSize) {
+        alert(`File "${file.name}" is too large. Please use ${mediaType}s under ${maxSizeMB}MB.`);
+        return;
+      }
+
+      // Don't allow mixing videos with images in carousel
+      if (fileArray.length > 1 && mediaType === 'video') {
+        alert('Videos cannot be mixed with images in a carousel.');
+        return;
+      }
     }
 
     setUploadingImageId(id);
 
     try {
-      // Upload to Supabase Storage and get public URL
-      const { url: publicUrl, mediaType: detectedType } = await uploadMedia(file, currentClient.id, id);
+      if (fileArray.length === 1) {
+        // Single file upload (existing behavior)
+        const { url: publicUrl, mediaType: detectedType } = await uploadMedia(firstFile, currentClient.id, id);
+        await handleUpdatePost(id, 'imageUrl', publicUrl);
+        await handleUpdatePost(id, 'imageUrls', [publicUrl]);
+        await handleUpdatePost(id, 'mediaType', detectedType);
+      } else {
+        // Multiple files - carousel upload
+        const uploadedUrls: string[] = [];
 
-      // Save the public URL and media type to the database
-      await handleUpdatePost(id, 'imageUrl', publicUrl);
-      await handleUpdatePost(id, 'mediaType', detectedType);
+        for (let i = 0; i < fileArray.length; i++) {
+          const file = fileArray[i];
+          const { url: publicUrl } = await uploadMedia(file, currentClient.id, `${id}-${i}`);
+          uploadedUrls.push(publicUrl);
+        }
+
+        // Set first image as primary, all images in imageUrls array
+        await handleUpdatePost(id, 'imageUrl', uploadedUrls[0]);
+        await handleUpdatePost(id, 'imageUrls', uploadedUrls);
+        await handleUpdatePost(id, 'mediaType', 'image');
+      }
     } catch (error: any) {
       console.error('Media upload error:', error);
       alert(error.message || 'Failed to upload media. Please try again.');
@@ -2120,21 +2193,37 @@ Heath`
                             {/* Creative Column */}
                             <td className="p-4 align-top border-r border-stone-200">
                                 <div className="space-y-2">
-                                    {/* Image Preview - Clickable to enlarge */}
+                                    {/* Image Preview - Clickable to enlarge or view carousel */}
                                     <div
                                       className="relative aspect-square w-full rounded-md overflow-hidden bg-stone-100 border border-stone-200 shadow-sm cursor-pointer group/image"
                                       onClick={() => {
-                                        if (post.imageUrl) {
-                                          setPreviewImageUrl(post.imageUrl);
+                                        const allImages = post.imageUrls && post.imageUrls.length > 0
+                                          ? post.imageUrls
+                                          : (post.imageUrl ? [post.imageUrl] : []);
+                                        if (allImages.length > 1) {
+                                          // Open carousel modal for multiple images
+                                          setPreviewCarouselImages(allImages);
+                                          setPreviewCarouselIndex(0);
+                                          setPreviewImagePostId(post.id);
+                                        } else if (allImages.length === 1) {
+                                          // Open single image preview
+                                          setPreviewImageUrl(allImages[0]);
                                           setPreviewImagePostId(post.id);
                                         }
                                       }}
                                     >
-                                        {post.imageUrl ? (
-                                            <>
-                                                {(post.mediaType === 'video' || isVideoUrl(post.imageUrl)) ? (
+                                        {(() => {
+                                          const primaryImage = post.imageUrls && post.imageUrls.length > 0
+                                            ? post.imageUrls[0]
+                                            : post.imageUrl;
+                                          const hasCarousel = post.imageUrls && post.imageUrls.length > 1;
+
+                                          if (primaryImage) {
+                                            return (
+                                              <>
+                                                {(post.mediaType === 'video' || isVideoUrl(primaryImage)) ? (
                                                   <video
-                                                    src={post.imageUrl + '#t=0.5'}
+                                                    src={primaryImage + '#t=0.5'}
                                                     className="w-full h-full object-cover"
                                                     muted
                                                     playsInline
@@ -2146,7 +2235,7 @@ Heath`
                                                   />
                                                 ) : (
                                                   <img
-                                                    src={post.imageUrl}
+                                                    src={primaryImage}
                                                     alt="Creative"
                                                     className="w-full h-full object-cover"
                                                     onError={(e) => {
@@ -2156,27 +2245,38 @@ Heath`
                                                   />
                                                 )}
                                                 {/* Video indicator */}
-                                                {(post.mediaType === 'video' || isVideoUrl(post.imageUrl)) && (
+                                                {(post.mediaType === 'video' || isVideoUrl(primaryImage)) && (
                                                     <div className="absolute top-2 left-2 bg-black/70 text-white text-[10px] font-medium px-2 py-1 rounded flex items-center gap-1">
                                                         <Film className="w-3 h-3" />
                                                         VIDEO
                                                     </div>
                                                 )}
+                                                {/* Carousel indicator */}
+                                                {hasCarousel && (
+                                                    <div className="absolute top-2 right-2 bg-black/70 text-white text-[10px] font-medium px-2 py-1 rounded flex items-center gap-1">
+                                                        <Images className="w-3 h-3" />
+                                                        {post.imageUrls!.length}
+                                                    </div>
+                                                )}
                                                 {/* Click to enlarge hint */}
                                                 <div className="absolute inset-0 bg-black/0 group-hover/image:bg-black/20 transition-colors flex items-center justify-center">
                                                     <div className="bg-white/90 text-stone-800 text-xs font-medium px-3 py-1.5 rounded shadow-sm opacity-0 group-hover/image:opacity-100 transform translate-y-1 group-hover/image:translate-y-0 transition-all">
-                                                        Click to {(post.mediaType === 'video' || isVideoUrl(post.imageUrl)) ? 'preview' : 'enlarge'}
+                                                        {hasCarousel ? 'View carousel' : ((post.mediaType === 'video' || isVideoUrl(primaryImage)) ? 'Preview video' : 'Click to enlarge')}
                                                     </div>
                                                 </div>
-                                            </>
-                                        ) : (
-                                            <div className="absolute inset-0 flex flex-col items-center justify-center text-stone-400">
-                                                <div className="p-2 bg-stone-200 rounded-full mb-2">
-                                                  <Image className="w-5 h-5 text-stone-500" />
-                                                </div>
-                                                <span className="text-[10px] uppercase font-bold tracking-wider text-stone-500">No Media</span>
-                                            </div>
-                                        )}
+                                              </>
+                                            );
+                                          } else {
+                                            return (
+                                              <div className="absolute inset-0 flex flex-col items-center justify-center text-stone-400">
+                                                  <div className="p-2 bg-stone-200 rounded-full mb-2">
+                                                    <Image className="w-5 h-5 text-stone-500" />
+                                                  </div>
+                                                  <span className="text-[10px] uppercase font-bold tracking-wider text-stone-500">No Media</span>
+                                              </div>
+                                            );
+                                          }
+                                        })()}
 
                                         {post.status === 'Posted' && (
                                             <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white font-medium text-sm pointer-events-none">
@@ -2193,17 +2293,33 @@ Heath`
                                         )}
                                     </div>
 
+                                    {/* Carousel Thumbnails - Show smaller images below main image */}
+                                    {post.imageUrls && post.imageUrls.length > 1 && (
+                                      <CarouselThumbnails
+                                        images={post.imageUrls}
+                                        maxThumbnails={4}
+                                        onImageClick={(index) => {
+                                          setPreviewCarouselImages(post.imageUrls!);
+                                          setPreviewCarouselIndex(index);
+                                          setPreviewImagePostId(post.id);
+                                        }}
+                                      />
+                                    )}
+
                                     {/* Upload Button - Always visible below image */}
                                     <label className="flex items-center justify-center gap-2 px-3 py-2 border border-stone-300 rounded-md cursor-pointer hover:bg-stone-50 hover:border-brand-green transition-colors text-xs font-medium text-stone-600 hover:text-brand-green">
                                         <input
                                           type="file"
                                           accept="image/*,video/*"
+                                          multiple
                                           onChange={(e) => handleMediaChange(post.id, e)}
                                           className="hidden"
                                           disabled={post.status === 'Posted'}
                                         />
                                         <Upload className="w-3.5 h-3.5" />
-                                        {post.imageUrl ? ((post.mediaType === 'video' || isVideoUrl(post.imageUrl)) ? 'Change Video' : 'Change Image') : 'Upload Media'}
+                                        {post.imageUrl || (post.imageUrls && post.imageUrls.length > 0)
+                                          ? ((post.mediaType === 'video' || (post.imageUrl && isVideoUrl(post.imageUrl))) ? 'Change Video' : 'Add/Change Images')
+                                          : 'Upload Media'}
                                     </label>
                                 </div>
                             </td>
@@ -2696,8 +2812,8 @@ Example:
         </div>
       )}
 
-      {/* Image Preview Modal */}
-      {previewImageUrl && (
+      {/* Image Preview Modal - Single Image */}
+      {previewImageUrl && !previewCarouselImages && (
         <div
           className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
           onClick={() => {
@@ -2762,6 +2878,19 @@ Example:
             )}
           </div>
         </div>
+      )}
+
+      {/* Carousel Preview Modal */}
+      {previewCarouselImages && previewCarouselImages.length > 0 && (
+        <CarouselModal
+          images={previewCarouselImages}
+          initialIndex={previewCarouselIndex}
+          onClose={() => {
+            setPreviewCarouselImages(null);
+            setPreviewCarouselIndex(0);
+            setPreviewImagePostId(null);
+          }}
+        />
       )}
 
       {/* Schedule Posts Modal */}
