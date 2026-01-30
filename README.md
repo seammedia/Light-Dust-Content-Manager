@@ -668,13 +668,22 @@ CREATE INDEX IF NOT EXISTS idx_posts_late_post_id ON posts(late_post_id);
 
 1. **Carousel/Multi-Image Posts** - Support for Instagram carousel posts
    - Upload multiple images for a single post (creates carousel)
-   - Table view shows primary image with thumbnail strip below for carousel posts
-   - Carousel indicator badge shows image count
-   - Click to view full carousel slideshow with navigation
-   - Calendar view shows carousel badge on posts with multiple images
-   - Post editor supports adding/removing/reordering images
+   - Table view shows primary image with draggable thumbnail strip below
+   - **Drag-and-drop reordering** - Drag thumbnails to change image order
+   - First image marked as "COVER" badge - this is what appears in feeds
+   - Remove individual images with X button on hover
+   - Carousel indicator badge shows total image count (e.g., "3")
+   - Click thumbnails to view full carousel slideshow with navigation
+   - Calendar view shows purple carousel badge on posts with multiple images
+   - Post editor supports adding/removing/reordering images in grid layout
+   - Late API receives all images in correct order for scheduling
    - Database migration: `add-carousel-support-schema.sql`
    - Videos cannot be mixed with images in carousel (single video only)
+   - **Key learnings:**
+     - Always run database migration before using feature
+     - Changes must be committed & pushed for Vercel deployment
+     - Existing posts need multiple images uploaded to show carousel UI
+     - First image in array = cover image shown in Instagram feed
 
 2. **Post Rescheduling to Late API** - Sync date changes to scheduled posts
    - When dragging posts in calendar or editing dates, Late API is updated
