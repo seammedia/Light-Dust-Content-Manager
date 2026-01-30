@@ -548,6 +548,50 @@ The content manager integrates with [Late API](https://getlate.dev) for scheduli
 - Instagram videos are posted as Reels
 - Facebook videos posted to Page timeline
 
+### Post Rescheduling & Content Sync
+
+When a post has been scheduled to Late, you can update it without recreating:
+
+| Change | Syncs to Late? | How |
+|--------|---------------|-----|
+| **Date change** | ✅ Yes | Drag post in calendar or edit date field |
+| **Caption edit** | ✅ Yes | Edit the caption text (auto-syncs after 500ms) |
+| **Hashtag edit** | ✅ Yes | Edit hashtags (auto-syncs after 500ms) |
+| **Image change** | ❌ No | Late API doesn't support media updates |
+| **Status change** | ❌ No | Only triggers initial scheduling |
+
+**How It Works:**
+1. When a post is scheduled to Late, the `late_post_id` is saved to the database
+2. When you change the date, caption, or hashtags, the system detects the change
+3. After 500ms (debounced to prevent spam), it calls the Late API to update the post
+4. The post remains scheduled (not converted to draft)
+
+**Database Setup:**
+Run this SQL to enable rescheduling (if not already done):
+```sql
+ALTER TABLE posts ADD COLUMN IF NOT EXISTS late_post_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_posts_late_post_id ON posts(late_post_id);
+```
+
+**API Endpoints:**
+- `/api/late-reschedule` (PUT) - Updates scheduled post date/content
+- `/api/late-reschedule` (DELETE) - Cancels a scheduled post
+
+**Troubleshooting Reschedule:**
+
+**Post becomes "Draft" after rescheduling:**
+- Fixed in latest version - uses `isDraft: false` and `publishNow: false`
+- If still happening, redeploy from latest code
+
+**"Post not found" error:**
+- Post may have already been published or deleted from Late
+- Check Late dashboard to verify post status
+
+**Changes not syncing:**
+- Verify post has a `late_post_id` in the database
+- Check browser console for sync logs
+- Only works for posts with status "Posted"
+
 ### Troubleshooting Late API
 
 **"Failed to fetch" error:**
@@ -616,6 +660,26 @@ The content manager integrates with [Late API](https://getlate.dev) for scheduli
 - Check Supabase Storage to verify file was uploaded
 
 ## Development History
+
+### Recent Updates (2026-01-30)
+
+1. **Post Rescheduling to Late API** - Sync date changes to scheduled posts
+   - When dragging posts in calendar or editing dates, Late API is updated
+   - Posts stay scheduled (don't become drafts) using `isDraft: false`
+   - Late post ID stored in database for future updates
+   - Database migration: `add-late-post-id-schema.sql`
+
+2. **Caption & Hashtag Sync to Late** - Edit content after scheduling
+   - Caption edits auto-sync to Late API (500ms debounce)
+   - Hashtag edits auto-sync to Late API
+   - Works for all clients with scheduled posts
+   - Console logs show sync status
+
+3. **Washco Express Image Guidelines** - Client feedback learnings
+   - Added "Critical Learnings" section to profile.md
+   - Image-caption matching rules documented
+   - Touch-free messaging requirements
+   - Quality control checklist added
 
 ### Recent Updates (2026-01-22)
 
@@ -867,6 +931,7 @@ See `DEPLOYMENT.md` for detailed technical documentation of all improvements.
 - `add-meta-integration-schema.sql` - Meta API integration schema
 - `add-notes-tracking.sql` - Client notes notification tracking columns
 - `add-video-support-schema.sql` - Video upload support (adds media_type column)
+- `add-late-post-id-schema.sql` - Late post ID for rescheduling support
 
 ### Source Code
 - `App.tsx` - Main application with scheduling logic
@@ -882,6 +947,7 @@ See `DEPLOYMENT.md` for detailed technical documentation of all improvements.
 - `src/components/MetaSettings.tsx` - Settings UI for Meta integration
 - `api/late-profiles.ts` - Serverless function to fetch Late accounts
 - `api/late-schedule.ts` - Serverless function to schedule posts via Late
+- `api/late-reschedule.ts` - Serverless function to update/cancel scheduled posts
 - `api/cleanup-storage.ts` - Serverless function for storage cleanup
 - `api/notify-notes.ts` - Serverless function for client notes email notifications
 - `api/post-to-meta.ts` - Vercel serverless function for Meta posting (legacy)
@@ -1083,6 +1149,11 @@ node scripts/create-posts.mjs \
 - Friendly, fun tone with emojis encouraged
 - Mention location: "Washco Express Broadmeadows"
 - Hashtags: #washcoexpress #carwash #dogwash #K9000 #broadmeadows
+- **CRITICAL - Image-Caption Matching:**
+  - Image MUST match caption content (dog wash image for dog wash caption)
+  - NEVER use hand washing images - Washco is TOUCH-FREE automated
+  - Automated wash bays, foam jets, touchless equipment only
+  - See `clients/washco-express/profile.md` for full quality checklist
 
 **Abercrombie Ridge (Country Retreat):**
 - AI-generated Australian countryside/bush landscapes
