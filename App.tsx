@@ -879,6 +879,8 @@ export default function App() {
     const currentPost = posts.find(p => p.id === id);
     const isStatusChange = field === 'status' && value === 'Approved' && currentPost?.status !== 'Approved';
     const isDateChange = field === 'date' && currentPost?.date !== value;
+    const isCaptionChange = field === 'generatedCaption' && currentPost?.generatedCaption !== value;
+    const isHashtagChange = field === 'generatedHashtags' && JSON.stringify(currentPost?.generatedHashtags) !== JSON.stringify(value);
 
     // Optimistic Update - immediate UI feedback
     setPosts(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
@@ -910,8 +912,8 @@ export default function App() {
       } else if (isStatusChange && currentClient) {
         // Auto-post to social media when status changes to "Approved"
         await handleAutoPost(id);
-      } else if (isDateChange) {
-        // Reschedule in Late API if post was already scheduled
+      } else if (isDateChange || isCaptionChange || isHashtagChange) {
+        // Sync changes to Late API if post was already scheduled
         // Check both local state and fetch from DB in case state is stale
         const postFromState = posts.find(p => p.id === id);
         let latePostId = postFromState?.latePostId;
@@ -927,9 +929,14 @@ export default function App() {
         }
 
         if (latePostId) {
-          await handleReschedulePost(id, value);
+          if (isDateChange) {
+            await handleReschedulePost(id, value);
+          } else if (isCaptionChange || isHashtagChange) {
+            // Sync content changes to Late
+            await handleSyncContentToLate(id, latePostId);
+          }
         } else {
-          console.log('No Late post ID found, skipping reschedule');
+          console.log('No Late post ID found, skipping sync');
         }
       }
 
@@ -1051,6 +1058,42 @@ export default function App() {
       console.error('Reschedule error:', error);
       // Don't show alert for every reschedule failure - just log it
       // The post may have already been published or cancelled
+      if (error.message?.includes('not found') || error.message?.includes('published')) {
+        console.log('Post may have already been published or removed from Late');
+      }
+    }
+  };
+
+  // Sync content (caption + hashtags) to Late API when edited
+  const handleSyncContentToLate = async (postId: string, latePostId: string) => {
+    // Get the latest post data from state (which has the updated field)
+    const post = posts.find(p => p.id === postId);
+    if (!post) {
+      console.log('Post not found for content sync');
+      return;
+    }
+
+    try {
+      // Build content with caption + hashtags (same format as auto-post)
+      let content = post.generatedCaption || '';
+      if (post.generatedHashtags && post.generatedHashtags.length > 0) {
+        content += '\n\n' + post.generatedHashtags.map(tag => `#${tag}`).join(' ');
+      }
+      if (!content) {
+        content = post.imageDescription || '';
+      }
+
+      console.log(`Syncing content for post ${postId} (Late ID: ${latePostId})`);
+
+      await reschedulePost({
+        latePostId: latePostId,
+        content: content
+      });
+
+      console.log(`Successfully synced content for post ${postId}`);
+    } catch (error: any) {
+      console.error('Content sync error:', error);
+      // Don't show alert - just log it
       if (error.message?.includes('not found') || error.message?.includes('published')) {
         console.log('Post may have already been published or removed from Late');
       }
