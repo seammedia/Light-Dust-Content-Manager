@@ -248,4 +248,147 @@ export const CarouselThumbnails: React.FC<CarouselThumbnailsProps> = ({
   );
 };
 
+// Editable carousel thumbnails with drag-and-drop reordering
+interface EditableCarouselThumbnailsProps {
+  images: string[];
+  onReorder: (newImages: string[]) => void;
+  onRemove?: (index: number) => void;
+  onImageClick?: (index: number) => void;
+  disabled?: boolean;
+  className?: string;
+}
+
+export const EditableCarouselThumbnails: React.FC<EditableCarouselThumbnailsProps> = ({
+  images,
+  onReorder,
+  onRemove,
+  onImageClick,
+  disabled = false,
+  className = ''
+}) => {
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  if (!images || images.length === 0) {
+    return null;
+  }
+
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    if (disabled) return;
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+    // Required for Firefox
+    e.dataTransfer.setData('text/plain', index.toString());
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (disabled || draggedIndex === null || draggedIndex === index) return;
+    setDragOverIndex(index);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverIndex(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, targetIndex: number) => {
+    e.preventDefault();
+    if (disabled || draggedIndex === null || draggedIndex === targetIndex) {
+      setDraggedIndex(null);
+      setDragOverIndex(null);
+      return;
+    }
+
+    // Reorder the images
+    const newImages = [...images];
+    const [draggedImage] = newImages.splice(draggedIndex, 1);
+    newImages.splice(targetIndex, 0, draggedImage);
+
+    onReorder(newImages);
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
+  return (
+    <div className={`space-y-2 ${className}`}>
+      <div className="flex flex-wrap gap-2">
+        {images.map((url, index) => (
+          <div
+            key={`${url}-${index}`}
+            draggable={!disabled}
+            onDragStart={(e) => handleDragStart(e, index)}
+            onDragOver={(e) => handleDragOver(e, index)}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, index)}
+            onDragEnd={handleDragEnd}
+            className={`relative group/thumb ${!disabled ? 'cursor-grab active:cursor-grabbing' : ''}`}
+          >
+            <div
+              className={`relative w-12 h-12 rounded overflow-hidden border-2 transition-all ${
+                index === 0 ? 'border-brand-green' : 'border-stone-200'
+              } ${dragOverIndex === index ? 'border-purple-500 scale-105' : ''} ${
+                draggedIndex === index ? 'opacity-50' : ''
+              }`}
+              onClick={() => onImageClick?.(index)}
+            >
+              {isVideoUrl(url) ? (
+                <video
+                  src={url + '#t=0.5'}
+                  className="w-full h-full object-cover pointer-events-none"
+                  muted
+                  playsInline
+                  preload="metadata"
+                />
+              ) : (
+                <img src={url} alt={`Image ${index + 1}`} className="w-full h-full object-cover pointer-events-none" />
+              )}
+
+              {/* Index badge */}
+              <div className="absolute top-0.5 left-0.5 bg-black/70 text-white text-[9px] w-4 h-4 rounded flex items-center justify-center font-bold">
+                {index + 1}
+              </div>
+
+              {/* Video indicator */}
+              {isVideoUrl(url) && (
+                <div className="absolute bottom-0.5 left-0.5">
+                  <Film className="w-3 h-3 text-white drop-shadow" />
+                </div>
+              )}
+
+              {/* Cover badge for first image */}
+              {index === 0 && (
+                <div className="absolute bottom-0 left-0 right-0 bg-brand-green text-white text-[8px] font-bold text-center py-0.5">
+                  COVER
+                </div>
+              )}
+            </div>
+
+            {/* Remove button */}
+            {onRemove && !disabled && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRemove(index);
+                }}
+                className="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 text-white rounded-full w-4 h-4 flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-opacity z-10"
+                title="Remove image"
+              >
+                <X className="w-2.5 h-2.5" />
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+      {images.length > 1 && !disabled && (
+        <p className="text-[10px] text-stone-500">Drag to reorder. First image is the cover.</p>
+      )}
+    </div>
+  );
+};
+
 export default ImageCarousel;

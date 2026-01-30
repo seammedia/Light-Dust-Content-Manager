@@ -4,7 +4,7 @@ import { PostEditor } from './components/PostEditor';
 import { MetaSettings } from './src/components/MetaSettings';
 import { ClientManagement } from './components/ClientManagement';
 import { GeneratePostsModal } from './components/GeneratePostsModal';
-import { ImageCarousel, CarouselModal, CarouselThumbnails } from './components/ImageCarousel';
+import { ImageCarousel, CarouselModal, EditableCarouselThumbnails } from './components/ImageCarousel';
 import { supabase } from './services/supabaseClient';
 import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles, Mail, Clock, Send, FileText, Image, Film, X, LayoutGrid, HardDrive, LogOut, Images } from 'lucide-react';
 import { generateCaptionFromImage, updateFromFeedback, generateImageFromFeedback } from './services/geminiService';
@@ -1007,10 +1007,12 @@ export default function App() {
         content = post.imageDescription || '';
       }
 
-      // Check if post has valid media URL (not empty, not base64)
-      const hasValidMedia = post.imageUrl &&
-        post.imageUrl.trim() !== '' &&
-        post.imageUrl.startsWith('http');
+      // Check if post has valid media URL(s) (not empty, not base64)
+      // For carousels, use imageUrls array; for single images, use imageUrl
+      const allMediaUrls = post.imageUrls && post.imageUrls.length > 0
+        ? post.imageUrls.filter(url => url && url.trim() !== '' && url.startsWith('http'))
+        : (post.imageUrl && post.imageUrl.trim() !== '' && post.imageUrl.startsWith('http') ? [post.imageUrl] : []);
+      const hasValidMedia = allMediaUrls.length > 0;
 
       // Fetch all profiles to get platform info
       const allProfiles = await getProfiles();
@@ -1033,11 +1035,11 @@ export default function App() {
         accountId: profile.id
       }));
 
-      // Schedule the post via Late API
+      // Schedule the post via Late API (use all carousel images if available)
       const lateResponse = await schedulePost({
         platforms,
         content,
-        mediaUrls: hasValidMedia ? [post.imageUrl!] : [],
+        mediaUrls: allMediaUrls,
         mediaType: post.mediaType || 'image',
         scheduledFor
       });
@@ -1285,17 +1287,23 @@ export default function App() {
             }
           }
 
+          // Get all media URLs for carousel posts
+          const allMediaUrls = post.imageUrls && post.imageUrls.length > 0
+            ? post.imageUrls.filter(url => url && url.trim() !== '' && url.startsWith('http'))
+            : (post.imageUrl && post.imageUrl.trim() !== '' && post.imageUrl.startsWith('http') ? [post.imageUrl] : []);
+
           console.log(`Scheduling post ${post.id}:`, {
             mediaType: mediaType,
             detectedFromUrl: mediaType !== post.mediaType,
-            imageUrl: post.imageUrl?.substring(0, 100),
+            imageCount: allMediaUrls.length,
+            isCarousel: allMediaUrls.length > 1,
             platforms: platforms.map(p => p.platform),
           });
 
           const lateResponse = await schedulePost({
             platforms,
             content,
-            mediaUrls: post.imageUrl ? [post.imageUrl] : [],
+            mediaUrls: allMediaUrls,
             mediaType: mediaType,
             scheduledFor,
           });
@@ -2293,11 +2301,22 @@ Heath`
                                         )}
                                     </div>
 
-                                    {/* Carousel Thumbnails - Show smaller images below main image */}
+                                    {/* Editable Carousel Thumbnails - Drag to reorder */}
                                     {post.imageUrls && post.imageUrls.length > 1 && (
-                                      <CarouselThumbnails
+                                      <EditableCarouselThumbnails
                                         images={post.imageUrls}
-                                        maxThumbnails={4}
+                                        disabled={post.status === 'Posted'}
+                                        onReorder={async (newImages) => {
+                                          // Update imageUrls in state and database
+                                          await handleUpdatePost(post.id, 'imageUrls', newImages);
+                                          // Also update imageUrl to be the first image
+                                          await handleUpdatePost(post.id, 'imageUrl', newImages[0]);
+                                        }}
+                                        onRemove={async (index) => {
+                                          const newImages = post.imageUrls!.filter((_, i) => i !== index);
+                                          await handleUpdatePost(post.id, 'imageUrls', newImages);
+                                          await handleUpdatePost(post.id, 'imageUrl', newImages[0] || '');
+                                        }}
                                         onImageClick={(index) => {
                                           setPreviewCarouselImages(post.imageUrls!);
                                           setPreviewCarouselIndex(index);
