@@ -226,7 +226,29 @@ export function ClientManagement({ clients, onClientSelect }: ClientManagementPr
   const weekRangeStr = `${currentWeekStart.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })}`;
 
   // Filter to only show non-master clients
-  const displayClients = clients.filter(c => c.pin !== '1991');
+  const filteredClients = clients.filter(c => c.pin !== '1991');
+
+  // Sort clients by status priority (actionable items first)
+  // Priority: outstanding > no_posts > in_progress > awaiting > approved > posted
+  const statusPriority: Record<WeeklyStatusType, number> = {
+    'outstanding': 0,
+    'no_posts': 1,
+    'in_progress': 2,
+    'awaiting': 3,
+    'approved': 4,
+    'posted': 5
+  };
+
+  const displayClients = filteredClients.sort((a, b) => {
+    const aStatus = getWeeklyStatusInfo(allPosts[a.id] || [], today);
+    const bStatus = getWeeklyStatusInfo(allPosts[b.id] || [], today);
+    const priorityDiff = statusPriority[aStatus.type] - statusPriority[bStatus.type];
+    // If same priority, sort alphabetically by name
+    if (priorityDiff === 0) {
+      return a.name.localeCompare(b.name);
+    }
+    return priorityDiff;
+  });
 
   // Check if today is in the current week
   const today = new Date();
