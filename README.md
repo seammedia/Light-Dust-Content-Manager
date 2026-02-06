@@ -303,25 +303,75 @@ See `CLIENT-PINS.md` for all client access credentials.
 
 ## Adding New Clients
 
-To add a new client to the system:
+### Option 1: CLI Script (Recommended)
+
+Use the CLI tool to add clients directly without opening Supabase:
+
+```bash
+cd /Volumes/PortableSSD/Projects/light-dust-content-manager
+
+# List all existing clients
+node scripts/add-client.mjs --list
+
+# Add a new client
+node scripts/add-client.mjs \
+  --name "Client Name" \
+  --pin "1234" \
+  --brand "Brand Name" \
+  --contact "Contact Person" \
+  --email "email@example.com" \
+  --mission "Brand mission statement" \
+  --tone "Brand tone descriptors" \
+  --keywords "keyword1,keyword2,keyword3"
+```
+
+**CLI Options:**
+| Flag | Description |
+|------|-------------|
+| `--name` | Client name (required) |
+| `--pin` | Access PIN (required) |
+| `--brand` | Brand name (defaults to client name) |
+| `--contact` | Contact person name |
+| `--email` | Contact email |
+| `--mission` | Brand mission statement |
+| `--tone` | Brand tone description |
+| `--keywords` | Comma-separated keywords |
+| `--list` | List all existing clients |
+
+### Option 2: Supabase SQL Editor
+
+For complex setups or bulk operations, use the SQL Editor:
 
 1. Open Supabase Dashboard → SQL Editor
 2. Run this SQL (replace with your client details):
 
 ```sql
-INSERT INTO clients (name, pin, brand_name, brand_mission, brand_tone, brand_keywords)
+INSERT INTO clients (name, pin, brand_name, brand_mission, brand_tone, brand_keywords, contact_name, contact_email)
 VALUES (
   'Client Name',
-  '1234',  -- Unique 4-digit PIN
+  '1234',
   'Brand Name',
   'Brand mission statement',
   'Brand tone descriptors',
-  '["keyword1", "keyword2"]'::jsonb
+  '["keyword1", "keyword2"]'::jsonb,
+  'Contact Person',
+  'email@example.com'
 );
 ```
 
 3. The new client will immediately appear in the master account selector
 4. Share the PIN with your client for direct access
+
+### Adding Posts for a Client
+
+Create a custom script in `/scripts/` folder (see `add-krystal-posts.mjs` as template):
+
+```bash
+# Run the posts script
+node scripts/add-[client-name]-posts.mjs
+```
+
+Or use Claude Code to generate posts directly - just provide the client name, dates, and content pillars.
 
 See `MULTI-CLIENT-SETUP.md` for detailed instructions.
 
@@ -365,6 +415,35 @@ Added visual monthly calendar view with:
 - Click posts to view full details in modal
 - Month navigation (previous/next)
 - Syncs with month filter tabs
+
+## Development Learnings
+
+### Variable Declaration Order in React Components
+**Problem:** White screen crash in Client Management tab after adding sorting.
+
+**Cause:** Used `today` variable in sort function before it was defined:
+```tsx
+// ❌ BAD - today used before defined
+const displayClients = filteredClients.sort((a, b) => {
+  const aStatus = getWeeklyStatusInfo(allPosts[a.id] || [], today); // today not yet defined!
+  ...
+});
+const today = new Date(); // defined after use
+```
+
+**Solution:** Always define variables before using them, even in React components where hoisting might seem to apply:
+```tsx
+// ✅ GOOD - today defined first
+const today = new Date();
+today.setHours(0, 0, 0, 0);
+
+const displayClients = [...filteredClients].sort((a, b) => {
+  const aStatus = getWeeklyStatusInfo(allPosts[a.id] || [], today);
+  ...
+});
+```
+
+**Also:** Use spread operator `[...array]` before `.sort()` to avoid mutating the original array.
 
 ## Troubleshooting
 
@@ -1190,6 +1269,18 @@ node scripts/create-posts.mjs \
 - Themes: sunrise/sunset, stargazing, nature walks, relaxation
 - Hashtags: #abercrombieridge #countryretreat #taralga #nswholidays
 
+**Phoenix Hospitality Group (Hospitality Labour Hire):**
+- Labour hire company for hospitality industry - NOT just cleaning
+- Services: Kitchen Stewards, Apprentice Chefs, Qualified Chefs, Bar Staff, Front of House, Commercial Cleaning
+- Gold Coast / Brisbane / Sunshine Coast service area
+- 20+ years industry experience
+- Professional, reliable, warm tone
+- Caption style: Start with emoji, short punchy sentences, end with phone number
+- Include contact: 1300 409 920 and admin@phoenixhospitalitygroup.com.au
+- Image style: Real photos of staff in branded uniforms (dark polo with orange Phoenix logo), commercial kitchens, team photos
+- Branded graphics: Dark background, orange accents, "LATEST NEWS" or "Now Hiring" headers
+- Hashtags: #PhoenixHospitality #HospitalityStaff #ApprenticeChef #KitchenStaff #GoldCoast #Brisbane
+
 ### Post Status
 
 Posts are created with status **"For Approval"** (not Draft) so clients can review immediately.
@@ -1304,6 +1395,18 @@ claude mcp add --transport http Canva https://mcp.canva.com/mcp
 - Mix of website product images + AI-generated lifestyle shots
 - AI images: flags flying on poles, backyard scenes, blue sky
 - Website images: actual product photos from flagworks.com.au
+
+**Phoenix Hospitality Group (Hospitality Labour Hire):**
+- Labour hire company specialising in hospitality staffing - NOT just cleaning
+- Service area: Gold Coast, Brisbane, Sunshine Coast, Queensland
+- Services: Kitchen Stewards, Apprentice Chefs, Qualified Chefs, Bar Staff, Front of House, Commercial Cleaning
+- 20+ years industry experience, HACCP certified
+- Real photos preferred: Staff in branded uniforms (dark polo with orange Phoenix logo), commercial kitchens, team photos
+- Branded graphics: Dark background, orange/gold accents, "LATEST NEWS" or "Now Hiring" headers, QR codes
+- Caption structure: Start with emoji, short punchy sentences, call to action, phone number, 2-3 hashtags
+- Always include phone (1300 409 920) and email (admin@phoenixhospitalitygroup.com.au)
+- Mix of recruitment posts (for job seekers) and service posts (for venues)
+- Profile stored in: `clients/phoenix-hospitality/profile.md`
 
 ---
 
