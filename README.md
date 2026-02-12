@@ -445,6 +445,46 @@ const displayClients = [...filteredClients].sort((a, b) => {
 
 **Also:** Use spread operator `[...array]` before `.sort()` to avoid mutating the original array.
 
+### Git Remote Authentication
+**Problem:** HTTPS push fails with "Device not configured" error.
+
+**Solution:** Switch to SSH remote:
+```bash
+git remote set-url origin git@github.com:seammedia/Light-Dust-Content-Manager.git
+```
+SSH identity is already configured for the `seammedia` GitHub account.
+
+### Vercel Auto-Deploy Timing
+- Vercel deploys automatically on push to `main` branch
+- Build + deploy takes roughly 30-60 seconds
+- Always hard refresh (`Cmd+Shift+R`) after deploy to bypass browser cache
+- Port 3000 is often in use locally - dev server auto-selects 3001
+
+### Supabase Post ID Generation
+**Problem:** Posts table requires explicit ID - insert fails with "null value in column id violates not-null constraint".
+
+**Solution:** Generate unique IDs in scripts:
+```javascript
+const postId = `${clientName.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+
+const { error } = await supabase.from('posts').insert({
+  id: postId,
+  client_id: client.id,
+  // ... other fields
+});
+```
+
+### Pricing Component Architecture (Seam Media Site)
+- When adding billing toggle, use separate `monthlyPrice`/`annualPrice` number fields rather than a single formatted string - makes calculations straightforward
+- Separate `monthlyLink`/`annualLink` fields for Stripe integration - toggle state drives which link the button uses
+- `exclusiveOffers` field uses `null` for packages without it, array of strings for packages that have it - clean conditional rendering
+
+### README Documentation Pattern
+- Keep the README as the single source of truth for pricing, Stripe links, and feature breakdowns
+- Update README whenever pricing or features change
+- Include actual Stripe URLs in documentation for reference
+- Document the data structure pattern so future changes are easy
+
 ## Troubleshooting
 
 ### Client PIN Not Working
