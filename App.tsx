@@ -15,7 +15,7 @@ import { uploadMedia, uploadImage, detectMediaType } from './services/storageSer
 
 // Inactive clients - hidden from master account and client selector
 // Remove a name from this list to re-activate the client
-const INACTIVE_CLIENTS = ['Flagworks', 'Light Dust'];
+const INACTIVE_CLIENTS = ['Flagworks', 'Light Dust', 'Mabii Co', 'Efficient Finance'];
 
 // Debounced Textarea Component - prevents typing lag
 function DebouncedTextarea({
