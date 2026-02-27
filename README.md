@@ -485,6 +485,45 @@ const { error } = await supabase.from('posts').insert({
 - Include actual Stripe URLs in documentation for reference
 - Document the data structure pattern so future changes are easy
 
+### Inactive Clients Pattern
+**Problem:** Need to hide clients from the dashboard without deleting them from the database.
+
+**Solution:** Code-level filtering via `INACTIVE_CLIENTS` array at top of `App.tsx`:
+```tsx
+const INACTIVE_CLIENTS = ['Flagworks', 'Light Dust', 'Mabii Co', 'Efficient Finance'];
+```
+
+This filters inactive clients from:
+- Master account client selector (login)
+- Session restore (returning users)
+- Direct PIN login (blocks their PIN)
+
+**Why not a database column?** Supabase JS client (anon key) cannot run `ALTER TABLE`. Schema changes require the Supabase Dashboard SQL Editor or a service role key. The code-level approach is simpler and doesn't need a migration.
+
+**To reactivate:** Remove the client name from the array and push.
+
+### Supabase Schema Changes
+- Cannot run `ALTER TABLE` or DDL via the Supabase JS client with the anon key
+- Schema changes (adding columns, constraints) must be done in the Supabase Dashboard SQL Editor
+- The `run-sql.mjs` script only supports SELECT queries via the client
+- For data changes (INSERT, UPDATE, DELETE), use the JS client in scripts
+
+### Client Onboarding Workflow
+Standard steps for adding a new client:
+1. Run `node scripts/add-client.mjs --name "Name" --pin "XXXX" --brand "Brand" --contact "Person" --email "email"`
+2. Create client folder at `/clients/[client-name]/` with `readme.md` and `profile.md`
+3. Update `CLIENT-PINS.md` with new PIN entry
+4. Create post script at `scripts/add-[client]-posts.mjs` using existing scripts as template
+5. Posts require explicit `id` field - generate with timestamp + random string pattern
+
+### Late API Scheduling Failures
+**"Media fetch failed, retrying..." errors on Instagram posts:**
+- This is a Late platform issue, not a Meta/Instagram problem
+- Happens when Late's servers can't retrieve the image at publish time
+- Facebook posts from the same schedule often succeed (same image, same time)
+- Fix: Click "retry post" in Late - usually works on second attempt
+- If recurring: Contact Late support about media fetching infrastructure issues
+
 ## Troubleshooting
 
 ### Client PIN Not Working
