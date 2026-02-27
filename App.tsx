@@ -13,6 +13,10 @@ import { isDriveConnected, getDriveEmail, connectDrive, clearDriveSettings } fro
 import { isLateConfigured, getProfiles, schedulePost, reschedulePost, LateProfile } from './services/lateService';
 import { uploadMedia, uploadImage, detectMediaType } from './services/storageService';
 
+// Inactive clients - hidden from master account and client selector
+// Remove a name from this list to re-activate the client
+const INACTIVE_CLIENTS = ['Flagworks', 'Light Dust'];
+
 // Debounced Textarea Component - prevents typing lag
 function DebouncedTextarea({
   value,
@@ -677,7 +681,7 @@ export default function App() {
             .order('name');
 
           if (allClientsData) {
-            setAllClients(allClientsData);
+            setAllClients(allClientsData.filter(c => !INACTIVE_CLIENTS.includes(c.name)));
             setIsMasterAccount(true);
             setIsAuthenticated(true);
 
@@ -830,7 +834,10 @@ export default function App() {
         return;
       }
 
-      if (clients && clients.length > 0) {
+      // Filter out inactive clients from login
+      const activeClients = clients?.filter(c => !INACTIVE_CLIENTS.includes(c.name)) || [];
+
+      if (activeClients.length > 0) {
         // Check if this is the master account (Seam Media)
         if (passwordInput === '1991') {
           setIsMasterAccount(true);
@@ -841,24 +848,24 @@ export default function App() {
             .order('name');
 
           if (allClientsData) {
-            setAllClients(allClientsData);
+            setAllClients(allClientsData.filter(c => !INACTIVE_CLIENTS.includes(c.name)));
             setShowClientSelector(true);
           }
           // Save master session (no client selected yet)
           saveSession(passwordInput, undefined, true);
           setIsAuthenticated(true);
           setLoginError(false);
-        } else if (clients.length > 1) {
+        } else if (activeClients.length > 1) {
           // Multiple clients share this PIN - show client selector
           setIsMasterAccount(false);
-          setUserClients(clients);
+          setUserClients(activeClients);
           setShowClientSelector(true);
           saveSession(passwordInput, undefined, false);
           setIsAuthenticated(true);
           setLoginError(false);
         } else {
           // Single client login
-          const client = clients[0];
+          const client = activeClients[0];
           setIsMasterAccount(false);
           setUserClients([client]);
           setCurrentClient(client);
