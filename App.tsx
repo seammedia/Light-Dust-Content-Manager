@@ -403,7 +403,7 @@ function CalendarView({ posts, selectedMonth, onUpdatePostDate, onAddPost }: { p
                 onDrop={(e) => {
                   e.preventDefault();
                   setDragOverDate(null);
-                  if (draggedPost && onUpdatePostDate && draggedPost.date !== dateStr) {
+                  if (draggedPost && onUpdatePostDate && dateStr && draggedPost.date !== dateStr) {
                     onUpdatePostDate(draggedPost.id, dateStr);
                   }
                   setDraggedPost(null);
@@ -921,6 +921,9 @@ export default function App() {
   };
 
   const handleUpdatePost = useCallback(async (id: string, field: keyof Post, value: any) => {
+    // Prevent saving empty dates - this causes posts to disappear from the calendar
+    if (field === 'date' && !value) return;
+
     // Get current post to detect status changes
     const currentPost = posts.find(p => p.id === id);
     const isStatusChange = field === 'status' && value === 'Approved' && currentPost?.status !== 'Approved';
@@ -2183,7 +2186,7 @@ Heath`
                                     <input
                                         type="date"
                                         value={post.date || ''}
-                                        onChange={(e) => handleUpdatePost(post.id, 'date', e.target.value)}
+                                        onChange={(e) => { if (e.target.value) handleUpdatePost(post.id, 'date', e.target.value); }}
                                         className="w-full bg-transparent font-medium text-stone-600 focus:outline-none focus:text-brand-dark cursor-pointer border border-transparent hover:border-brand-green rounded px-2 py-1 transition-colors"
                                     />
                                     <div className="flex gap-1">
