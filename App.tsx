@@ -185,6 +185,7 @@ function PostDetailModal({ post, onClose }: { post: Post, onClose: () => void })
                   post.status === 'Approved' ? 'bg-brand-green text-white' :
                   post.status === 'For Approval' ? 'bg-amber-100 text-amber-800' :
                   post.status === 'Revision' ? 'bg-red-100 text-red-800' :
+                  post.status === 'Client Idea' ? 'bg-blue-500 text-white' :
                   'bg-stone-100 text-stone-600'
                 }`}>
                   {post.status}
@@ -426,6 +427,7 @@ function CalendarView({ posts, selectedMonth, onUpdatePostDate, onAddPost }: { p
 
                     // Status-based colors
                     const statusColors: Record<string, { bg: string; text: string; hoverBg: string; noImgBg: string; noImgText: string }> = {
+                      'Client Idea': { bg: 'bg-blue-100', text: 'text-blue-800', hoverBg: 'hover:bg-blue-200', noImgBg: 'bg-blue-200', noImgText: 'text-blue-500' },
                       'Draft': { bg: 'bg-stone-100', text: 'text-stone-600', hoverBg: 'hover:bg-stone-200', noImgBg: 'bg-stone-200', noImgText: 'text-stone-400' },
                       'Generated': { bg: 'bg-purple-100', text: 'text-purple-800', hoverBg: 'hover:bg-purple-200', noImgBg: 'bg-purple-200', noImgText: 'text-purple-400' },
                       'For Approval': { bg: 'bg-amber-100', text: 'text-amber-800', hoverBg: 'hover:bg-amber-200', noImgBg: 'bg-amber-200', noImgText: 'text-amber-500' },
@@ -1805,6 +1807,7 @@ export default function App() {
       case 'For Approval': return 'bg-amber-100 text-amber-800 border-amber-200';
       case 'Revision': return 'bg-red-100 text-red-800 border-red-200';
       case 'Generated': return 'bg-blue-50 text-blue-700 border-blue-200';
+      case 'Client Idea': return 'bg-blue-500 text-white border-blue-600';
       default: return 'bg-stone-100 text-stone-600 border-stone-200';
     }
   };
@@ -2179,9 +2182,9 @@ Heath`
                     {loading && posts.length === 0 ? (
                         <tr><td colSpan={5} className="p-8 text-center text-stone-400"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-2"/>Loading content...</td></tr>
                     ) : filteredPosts.map((post) => (
-                        <tr key={post.id} className="group hover:bg-stone-50/50 transition-colors bg-white">
+                        <tr key={post.id} className={`group hover:bg-stone-50/50 transition-colors ${post.status === 'Client Idea' ? 'bg-blue-50' : 'bg-white'}`}>
                             {/* Date Column */}
-                            <td className="sticky left-0 z-10 bg-white group-hover:bg-stone-50/50 p-4 align-top border-r border-stone-200">
+                            <td className={`sticky left-0 z-10 p-4 align-top border-r border-stone-200 ${post.status === 'Client Idea' ? 'bg-blue-50 group-hover:bg-blue-100/70' : 'bg-white group-hover:bg-stone-50/50'}`}>
                                 <div className="flex flex-col gap-2">
                                     <input
                                         type="date"
@@ -2419,6 +2422,7 @@ Heath`
                                             onChange={(e) => handleUpdatePost(post.id, 'status', e.target.value)}
                                             className={`w-full appearance-none pl-3 pr-8 py-2 rounded text-xs font-bold uppercase tracking-wider border focus:outline-none focus:ring-2 focus:ring-offset-1 ${getStatusColor(post.status)} cursor-pointer transition-colors shadow-sm`}
                                         >
+                                            <option value="Client Idea">Client Idea</option>
                                             <option value="Draft">Draft</option>
                                             <option value="For Approval">For Approval</option>
                                             <option value="Revision">Revision</option>
