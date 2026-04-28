@@ -72,16 +72,32 @@ This replaces the previous Gemini Nano Banana Pro image generation.
 2. Create a new API key (organisation-scoped or project-scoped both work)
 3. Add to Vercel as `VITE_OPENAI_API_KEY` (mark as Sensitive, scope to Production + Preview)
 4. Add the same key to your local `.env.local` file for development
-5. **Usage:** Master account clicks "Generate Image (AI)" button below the upload button on any post → enter a prompt → image generates and uploads
-6. **Model:** `gpt-image-2`
-7. **Size:** `1024x1024` (Instagram square)
-8. **Quality:** `high`
-9. **Reference images:** If the client has `reference_images` set, they are passed to gpt-image-2 as style guides via the `/v1/images/edits` endpoint (multi-image support, up to 8)
-10. **"Update from Feedback" flow** also uses gpt-image-2 - when client feedback contains image-related keywords, the post image is regenerated against the existing image as the source
+5. **Verify your OpenAI organisation** at [platform.openai.com/settings/organization/general](https://platform.openai.com/settings/organization/general) - the **Individual** verification (photo ID) is required for gpt-image-2 access
+6. **Usage:** Master account clicks "Generate Image (AI)" button below the upload button on any post → enter a prompt → image generates and uploads
+7. **Model:** `gpt-image-2`
+8. **Size:** `1024x1024` (Instagram square)
+9. **Quality:** `medium` (balanced speed/quality - takes 20-40s per image)
 
-**Cost:** approx $0.04-$0.19 per image at 1024x1024 high quality. Monitor usage at [platform.openai.com/usage](https://platform.openai.com/usage).
+**Cost:** approx $0.04-$0.07 per image at 1024x1024 medium quality. Monitor usage at [platform.openai.com/usage](https://platform.openai.com/usage).
 
 **Security:** never commit the API key. Use Vercel env vars + `.env.local`. If a key leaks, rotate immediately at [platform.openai.com/api-keys](https://platform.openai.com/api-keys).
+
+#### Per-Client Brand Assets (gpt-image-2 context)
+
+Each client has structured brand fields that get auto-injected into every image generation prompt:
+
+| Field | Purpose | Where to set |
+|-------|---------|--------------|
+| `reference_images` | Visual style guides (logos, existing posts, mood boards) - up to 8 passed to gpt-image-2 via `/v1/images/edits` | Client Notes modal → Brand Reference Images |
+| `brand_colors` | Hex codes (`#RRGGBB`) listed in the prompt to guide colour palette | Client Notes modal → Brand Colours |
+| `brand_style_notes` | Free-form visual style description ("clean minimal, warm lighting, no people in frame") | Client Notes modal → Brand Visual Style |
+| `client_notes` | General brand voice and preferences | Client Notes modal → top textarea |
+
+**Schema migration:** if you haven't yet, run `add-brand-fields.sql` in Supabase Dashboard SQL Editor to add the `brand_colors` and `brand_style_notes` columns.
+
+The Generate Image modal shows which brand fields are populated before you click Generate, so you can see what context the AI has.
+
+**"Update from Feedback" flow** also uses gpt-image-2 - when client feedback contains image-related keywords, the post image is regenerated against the existing image as the source, with all brand context applied.
 
 ### 3. Gmail API Setup (For Email Notifications)
 

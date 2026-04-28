@@ -8,6 +8,8 @@ export interface Client {
   brand_keywords?: string[];
   client_notes?: string; // Agency-only notes about the client
   reference_images?: string[]; // URLs of brand reference images for AI image generation
+  brand_colors?: string[]; // Hex codes (e.g. ['#FF6600', '#1A1A1A']) - injected into image prompts
+  brand_style_notes?: string; // Free-form style guide injected into image prompts (e.g. "clean minimal, warm lighting, no people")
   contact_name?: string;
   contact_email?: string;
   meta_page_id?: string;

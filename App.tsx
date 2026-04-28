@@ -652,6 +652,9 @@ export default function App() {
   const [clientNotes, setClientNotes] = useState('');
   const [referenceImages, setReferenceImages] = useState<string[]>([]);
   const [uploadingReferenceImage, setUploadingReferenceImage] = useState(false);
+  const [brandColors, setBrandColors] = useState<string[]>([]);
+  const [brandColorInput, setBrandColorInput] = useState('');
+  const [brandStyleNotes, setBrandStyleNotes] = useState('');
   const [savingClientNotes, setSavingClientNotes] = useState(false);
   const [clientLateProfiles, setClientLateProfiles] = useState<LateProfile[]>([]);
   const [selectedLateProfileIds, setSelectedLateProfileIds] = useState<string[]>([]);
@@ -1379,6 +1382,9 @@ export default function App() {
   const handleOpenClientNotes = async () => {
     setClientNotes(currentClient?.client_notes || '');
     setReferenceImages(currentClient?.reference_images || []);
+    setBrandColors(currentClient?.brand_colors || []);
+    setBrandStyleNotes(currentClient?.brand_style_notes || '');
+    setBrandColorInput('');
     setSelectedLateProfileIds(currentClient?.late_profile_ids || []);
     setShowClientNotesModal(true);
 
@@ -1404,6 +1410,8 @@ export default function App() {
         .update({
           client_notes: clientNotes,
           reference_images: referenceImages,
+          brand_colors: brandColors,
+          brand_style_notes: brandStyleNotes,
           late_profile_ids: selectedLateProfileIds
         })
         .eq('id', currentClient.id);
@@ -1411,7 +1419,14 @@ export default function App() {
       if (error) throw error;
 
       // Update current client state
-      const updatedClient = { ...currentClient, client_notes: clientNotes, reference_images: referenceImages, late_profile_ids: selectedLateProfileIds };
+      const updatedClient = {
+        ...currentClient,
+        client_notes: clientNotes,
+        reference_images: referenceImages,
+        brand_colors: brandColors,
+        brand_style_notes: brandStyleNotes,
+        late_profile_ids: selectedLateProfileIds
+      };
       setCurrentClient(updatedClient);
 
       // Also update in allClients array so notes persist when switching clients
@@ -1665,6 +1680,20 @@ export default function App() {
     }
   };
 
+  // Build a rich brand context string for AI image generation
+  // Combines brand name, client notes, brand colours and brand style notes
+  const buildBrandContext = (client: Client): string => {
+    const parts: string[] = [`Brand: ${client.brand_name}`];
+    if (client.client_notes) parts.push(client.client_notes);
+    if (client.brand_colors && client.brand_colors.length > 0) {
+      parts.push(`Brand colours to use in the composition: ${client.brand_colors.join(', ')}`);
+    }
+    if (client.brand_style_notes) {
+      parts.push(`Brand visual style: ${client.brand_style_notes}`);
+    }
+    return parts.join('. ');
+  };
+
   // Generate a brand new image from a text prompt (uses OpenAI gpt-image-2)
   const handleGenerateImageFromPrompt = async (postId: string, prompt: string) => {
     if (!currentClient || !prompt.trim()) {
@@ -1676,7 +1705,7 @@ export default function App() {
     setImagePromptModalPostId(null);
 
     try {
-      const brandContext = `Brand: ${currentClient.brand_name}. ${currentClient.client_notes || ''}`;
+      const brandContext = buildBrandContext(currentClient);
       const result = await generateImageFromPrompt(
         prompt,
         brandContext,
@@ -1736,7 +1765,7 @@ export default function App() {
       // If feedback mentions images, regenerate the image using Nano Banana Pro
       if (feedbackIsAboutImage) {
         try {
-          const brandContext = `Brand: ${currentClient.brand_name}. ${currentClient.client_notes || ''}`;
+          const brandContext = buildBrandContext(currentClient);
           const imageResult = await generateImageFromFeedback(
             post.imageUrl || null,
             post.notes,
@@ -2658,12 +2687,35 @@ Heath`
             </div>
             <p className="text-sm text-stone-600 mb-4">
               Describe the image you want. We'll use OpenAI's gpt-image-2 to create a square Instagram-ready image.
-              {currentClient?.reference_images && currentClient.reference_images.length > 0 && (
-                <span className="block mt-2 text-xs text-purple-700">
-                  Using {currentClient.reference_images.length} reference image{currentClient.reference_images.length > 1 ? 's' : ''} for brand style.
-                </span>
-              )}
             </p>
+            {currentClient && (
+              <div className="mb-4 p-3 bg-purple-50 border border-purple-200 rounded-lg space-y-1">
+                <div className="text-xs font-semibold text-purple-900 mb-1">Brand context being applied:</div>
+                {currentClient.reference_images && currentClient.reference_images.length > 0 && (
+                  <div className="text-xs text-purple-700">✓ {currentClient.reference_images.length} reference image{currentClient.reference_images.length > 1 ? 's' : ''}</div>
+                )}
+                {currentClient.brand_colors && currentClient.brand_colors.length > 0 && (
+                  <div className="text-xs text-purple-700 flex items-center gap-1.5">
+                    ✓ Colours:
+                    {currentClient.brand_colors.map((hex, i) => (
+                      <span key={i} className="inline-flex items-center gap-1">
+                        <span className="inline-block w-3 h-3 rounded border border-purple-300" style={{ backgroundColor: hex }} />
+                        <span className="font-mono">{hex}</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {currentClient.brand_style_notes && (
+                  <div className="text-xs text-purple-700">✓ Brand style notes</div>
+                )}
+                {currentClient.client_notes && (
+                  <div className="text-xs text-purple-700">✓ Client notes</div>
+                )}
+                {!currentClient.reference_images?.length && !currentClient.brand_colors?.length && !currentClient.brand_style_notes && !currentClient.client_notes && (
+                  <div className="text-xs text-purple-600 italic">No brand context set. Open Client Notes to add reference images, colours and style notes.</div>
+                )}
+              </div>
+            )}
             <textarea
               value={imagePromptText}
               onChange={(e) => setImagePromptText(e.target.value)}
@@ -2865,6 +2917,96 @@ Example:
               <p className="text-xs text-stone-400 mt-2">
                 Tip: Upload images that represent the brand's visual style, color palette, or aesthetic preferences.
               </p>
+            </div>
+
+            {/* Brand Colours Section */}
+            <div className="mt-6 pt-6 border-t border-stone-200">
+              <div className="flex items-center gap-2 mb-3">
+                <Sparkles className="w-5 h-5 text-purple-600" />
+                <h3 className="font-medium text-stone-800">Brand Colours</h3>
+              </div>
+              <p className="text-sm text-stone-500 mb-4">
+                Hex codes for the brand's primary colours. These are passed to AI image generation to guide the colour palette.
+              </p>
+
+              {/* Existing colours */}
+              {brandColors.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {brandColors.map((hex, idx) => (
+                    <div key={idx} className="flex items-center gap-2 bg-stone-50 border border-stone-200 rounded-lg pl-2 pr-1 py-1">
+                      <div className="w-6 h-6 rounded border border-stone-300" style={{ backgroundColor: hex }} />
+                      <span className="text-xs font-mono text-stone-700">{hex}</span>
+                      <button
+                        onClick={() => setBrandColors(brandColors.filter((_, i) => i !== idx))}
+                        className="p-1 text-stone-400 hover:text-red-500 transition-colors"
+                        title="Remove"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add colour input */}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={brandColorInput}
+                  onChange={(e) => setBrandColorInput(e.target.value)}
+                  placeholder="#FF6600"
+                  maxLength={7}
+                  className="flex-1 px-3 py-2 text-sm font-mono border border-stone-300 rounded-md focus:ring-1 focus:ring-purple-500 focus:border-purple-500 outline-none"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const hex = brandColorInput.trim();
+                      if (/^#[0-9A-Fa-f]{6}$/.test(hex) && !brandColors.includes(hex.toUpperCase())) {
+                        setBrandColors([...brandColors, hex.toUpperCase()]);
+                        setBrandColorInput('');
+                      }
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    const hex = brandColorInput.trim();
+                    if (/^#[0-9A-Fa-f]{6}$/.test(hex) && !brandColors.includes(hex.toUpperCase())) {
+                      setBrandColors([...brandColors, hex.toUpperCase()]);
+                      setBrandColorInput('');
+                    } else if (!/^#[0-9A-Fa-f]{6}$/.test(hex)) {
+                      alert('Please enter a valid hex code, e.g. #FF6600');
+                    }
+                  }}
+                  className="px-4 py-2 text-sm bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
+                >
+                  Add
+                </button>
+              </div>
+              <p className="text-xs text-stone-400 mt-2">
+                Format: #RRGGBB (e.g. #FF6600). Press Enter or click Add.
+              </p>
+            </div>
+
+            {/* Brand Style Notes Section */}
+            <div className="mt-6 pt-6 border-t border-stone-200">
+              <div className="flex items-center gap-2 mb-3">
+                <Sparkles className="w-5 h-5 text-purple-600" />
+                <h3 className="font-medium text-stone-800">Brand Visual Style</h3>
+              </div>
+              <p className="text-sm text-stone-500 mb-4">
+                Free-form description of the brand's visual style. Injected into every image prompt.
+              </p>
+              <textarea
+                value={brandStyleNotes}
+                onChange={(e) => setBrandStyleNotes(e.target.value)}
+                placeholder="Example:
+- Clean minimal photography, warm natural lighting
+- No people in frame, focus on products and details
+- Bold sans-serif typography for any text overlays
+- Australian context, local imagery preferred"
+                className="w-full h-32 px-4 py-3 border border-stone-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none resize-none text-sm"
+              />
             </div>
 
             {/* Social Accounts Section */}
