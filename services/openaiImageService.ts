@@ -9,7 +9,7 @@ const MODEL = 'gpt-image-2';
 
 // Instagram square posts - matches existing storage cropper output
 const INSTAGRAM_SIZE = '1024x1024';
-const DEFAULT_QUALITY = 'high';
+const DEFAULT_QUALITY = 'medium';
 
 // Helper to fetch image as Blob (used to convert URL inputs into multipart form parts)
 const fetchImageAsBlob = async (url: string): Promise<Blob> => {
