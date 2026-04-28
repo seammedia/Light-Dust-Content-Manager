@@ -7,7 +7,8 @@ import { GeneratePostsModal } from './components/GeneratePostsModal';
 import { ImageCarousel, CarouselModal, EditableCarouselThumbnails } from './components/ImageCarousel';
 import { supabase } from './services/supabaseClient';
 import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles, Mail, Clock, Send, FileText, Image, Film, X, LayoutGrid, HardDrive, LogOut, Images } from 'lucide-react';
-import { generateCaptionFromImage, updateFromFeedback, generateImageFromFeedback } from './services/geminiService';
+import { generateCaptionFromImage, updateFromFeedback } from './services/geminiService';
+import { generateImageFromFeedback, generateImageFromPrompt } from './services/openaiImageService';
 import { isGmailConnected, getConnectedEmail, connectGmail, sendEmail, clearGmailSettings } from './services/gmailService';
 import { isDriveConnected, getDriveEmail, connectDrive, clearDriveSettings } from './services/driveService';
 import { isLateConfigured, getProfiles, schedulePost, reschedulePost, LateProfile } from './services/lateService';
@@ -615,6 +616,9 @@ export default function App() {
   const [generatingCaptionId, setGeneratingCaptionId] = useState<string | null>(null);
   const [updatingFromFeedbackId, setUpdatingFromFeedbackId] = useState<string | null>(null);
   const [uploadingImageId, setUploadingImageId] = useState<string | null>(null);
+  const [generatingImageForPostId, setGeneratingImageForPostId] = useState<string | null>(null);
+  const [imagePromptModalPostId, setImagePromptModalPostId] = useState<string | null>(null);
+  const [imagePromptText, setImagePromptText] = useState<string>('');
   const [gmailConnected, setGmailConnected] = useState(isGmailConnected());
   const [gmailEmail, setGmailEmail] = useState(getConnectedEmail());
   const [driveConnected, setDriveConnected] = useState(isDriveConnected());
@@ -1661,6 +1665,50 @@ export default function App() {
     }
   };
 
+  // Generate a brand new image from a text prompt (uses OpenAI gpt-image-2)
+  const handleGenerateImageFromPrompt = async (postId: string, prompt: string) => {
+    if (!currentClient || !prompt.trim()) {
+      alert('Please enter a prompt');
+      return;
+    }
+
+    setGeneratingImageForPostId(postId);
+    setImagePromptModalPostId(null);
+
+    try {
+      const brandContext = `Brand: ${currentClient.brand_name}. ${currentClient.client_notes || ''}`;
+      const result = await generateImageFromPrompt(
+        prompt,
+        brandContext,
+        currentClient.reference_images
+      );
+
+      const dataUrl = `data:${result.mimeType};base64,${result.imageBase64}`;
+      const uploadedUrl = await uploadImage(dataUrl, currentClient.id, postId);
+      await handleUpdatePost(postId, 'imageUrl', uploadedUrl);
+
+      // Auto-generate matching caption
+      try {
+        const captionResult = await generateCaptionFromImage(
+          uploadedUrl,
+          currentClient.brand_name,
+          currentClient.client_notes
+        );
+        await handleUpdatePost(postId, 'generatedCaption', captionResult.caption);
+        await handleUpdatePost(postId, 'generatedHashtags', captionResult.hashtags);
+      } catch (captionError) {
+        console.warn('Caption generation failed but image succeeded:', captionError);
+      }
+
+      setImagePromptText('');
+    } catch (error: any) {
+      console.error('Image generation error:', error);
+      alert(error.message || 'Failed to generate image. Please try again.');
+    } finally {
+      setGeneratingImageForPostId(null);
+    }
+  };
+
   // Helper to detect if feedback is about images
   const isImageRelatedFeedback = (feedback: string): boolean => {
     const imageKeywords = [
@@ -2353,6 +2401,31 @@ Heath`
                                           ? ((post.mediaType === 'video' || (post.imageUrl && isVideoUrl(post.imageUrl))) ? 'Change Video' : 'Add/Change Images')
                                           : 'Upload Media'}
                                     </label>
+
+                                    {/* Generate Image with AI - Master account only */}
+                                    {isMasterAccount && (
+                                      <button
+                                        onClick={() => {
+                                          setImagePromptText(post.notes || '');
+                                          setImagePromptModalPostId(post.id);
+                                        }}
+                                        disabled={generatingImageForPostId === post.id || post.status === 'Posted'}
+                                        className="flex items-center justify-center gap-2 px-3 py-2 border border-purple-300 bg-purple-50 rounded-md cursor-pointer hover:bg-purple-100 hover:border-purple-400 transition-colors text-xs font-medium text-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        title="Generate a new image from a text prompt using OpenAI gpt-image-2"
+                                      >
+                                        {generatingImageForPostId === post.id ? (
+                                          <>
+                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                            Generating image...
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Sparkles className="w-3.5 h-3.5" />
+                                            Generate Image (AI)
+                                          </>
+                                        )}
+                                      </button>
+                                    )}
                                 </div>
                             </td>
 
@@ -2573,6 +2646,49 @@ Heath`
           }}
           onClose={() => setShowMetaSettings(false)}
         />
+      )}
+
+      {/* AI Image Generation Modal (gpt-image-2) */}
+      {imagePromptModalPostId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setImagePromptModalPostId(null)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <Sparkles className="w-6 h-6 text-purple-600" />
+              <h2 className="text-xl font-serif font-bold text-brand-dark">Generate Image with AI</h2>
+            </div>
+            <p className="text-sm text-stone-600 mb-4">
+              Describe the image you want. We'll use OpenAI's gpt-image-2 to create a square Instagram-ready image.
+              {currentClient?.reference_images && currentClient.reference_images.length > 0 && (
+                <span className="block mt-2 text-xs text-purple-700">
+                  Using {currentClient.reference_images.length} reference image{currentClient.reference_images.length > 1 ? 's' : ''} for brand style.
+                </span>
+              )}
+            </p>
+            <textarea
+              value={imagePromptText}
+              onChange={(e) => setImagePromptText(e.target.value)}
+              placeholder="e.g. A clean workshop scene with a mechanic inspecting a car battery, warm professional lighting, no text or logos"
+              className="w-full h-32 p-3 text-sm border border-stone-300 rounded-md focus:ring-1 focus:ring-purple-500 focus:border-purple-500 outline-none resize-y mb-4"
+              autoFocus
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setImagePromptModalPostId(null)}
+                className="px-4 py-2 text-sm text-stone-600 hover:bg-stone-100 rounded-md transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleGenerateImageFromPrompt(imagePromptModalPostId, imagePromptText)}
+                disabled={!imagePromptText.trim()}
+                className="px-4 py-2 text-sm bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                <Sparkles className="w-4 h-4" />
+                Generate
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Email Client Modal */}

@@ -63,6 +63,26 @@ A multi-client social content management platform where agencies can manage mult
 5. **Model:** Uses `gemini-2.0-flash-exp` for fast image analysis
 6. **Style:** Generates warm, friendly captions with paragraphs (no em dashes) and 4-5 relevant hashtags
 
+### 2b. OpenAI API Setup (For AI Image Generation - gpt-image-2)
+
+Image generation uses **OpenAI's gpt-image-2** (ChatGPT Images 2.0), released April 2026.
+This replaces the previous Gemini Nano Banana Pro image generation.
+
+1. Go to [OpenAI Platform](https://platform.openai.com/api-keys)
+2. Create a new API key (organisation-scoped or project-scoped both work)
+3. Add to Vercel as `VITE_OPENAI_API_KEY` (mark as Sensitive, scope to Production + Preview)
+4. Add the same key to your local `.env.local` file for development
+5. **Usage:** Master account clicks "Generate Image (AI)" button below the upload button on any post → enter a prompt → image generates and uploads
+6. **Model:** `gpt-image-2`
+7. **Size:** `1024x1024` (Instagram square)
+8. **Quality:** `high`
+9. **Reference images:** If the client has `reference_images` set, they are passed to gpt-image-2 as style guides via the `/v1/images/edits` endpoint (multi-image support, up to 8)
+10. **"Update from Feedback" flow** also uses gpt-image-2 - when client feedback contains image-related keywords, the post image is regenerated against the existing image as the source
+
+**Cost:** approx $0.04-$0.19 per image at 1024x1024 high quality. Monitor usage at [platform.openai.com/usage](https://platform.openai.com/usage).
+
+**Security:** never commit the API key. Use Vercel env vars + `.env.local`. If a key leaks, rotate immediately at [platform.openai.com/api-keys](https://platform.openai.com/api-keys).
+
 ### 3. Gmail API Setup (For Email Notifications)
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
