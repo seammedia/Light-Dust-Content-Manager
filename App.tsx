@@ -2529,7 +2529,12 @@ Heath`
                                             <option value="For Approval">For Approval</option>
                                             <option value="Revision">Revision</option>
                                             <option value="Approved">Approved</option>
-                                            <option value="Posted">Posted</option>
+                                            {/* "Posted" is a system-only status set when a post is actually
+                                                published via Late. It must NOT be manually selectable, otherwise
+                                                a post can be labelled "Posted" without ever being sent anywhere.
+                                                Only render it as an option when the post is already Posted so the
+                                                dropdown can display its current value. */}
+                                            {post.status === 'Posted' && <option value="Posted">Posted</option>}
                                         </select>
                                         <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-current opacity-60">
                                             <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
