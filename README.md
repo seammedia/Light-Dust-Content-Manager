@@ -1399,6 +1399,31 @@ node scripts/create-posts.mjs \
 - Themes: sunrise/sunset, stargazing, nature walks, relaxation
 - Hashtags: #abercrombieridge #countryretreat #taralga #nswholidays
 
+**Advanced Rigging (Structural Steel Erection Specialist, Perth WA):**
+- B2B industrial brand - posts go to Facebook, Instagram AND LinkedIn
+- ONE service only: structural steel erection. Never imply general rigging or multiple trades
+- Target the INDUSTRIAL market (warehouses, factories, processing plants, distribution centres), NOT commercial/residential, even though they do both
+- AI-generated stock-style industrial imagery: steel frames/portal frames being erected, cranes lifting steel beams, steel erectors in full PPE at height, industrial builds against blue sky
+- Always prompt: "no logos, no text overlays, no fake branding, no readable signage, no identifiable faces"
+- Professional, confident, no-nonsense B2B tone - minimal/no emojis, no hype
+- Safety is a core pillar (height safety, PPE, contractor platforms: CM3, Pegasus, Rapid Global, Procore, Hammertech, Safety Culture, Aconex, 1Breadcrumb, Sign on Site)
+- Tagline: "Lifting Standards." (use sparingly). Brand: black wordmark + red R, white/light grey
+- No phone in posts - enquiries to admin@advancedrigging.au. Don't invent projects/clients/tonnages/safety stats
+- PIN: 3703 | Contact: Jon Adams (jon@advancedrigging.au) | Launch: 3 July 2026
+
+**HENRY @ Lawson Riverside Suites (Riverside Cafe, Wagga Wagga NSW):**
+- REAL PHOTOS ONLY - use the professional photo library at `/Volumes/PortableSSD/Clients/claremont/Images/`
+- Never AI-generate food images - client has professional photography for all menu items
+- Short, punchy cafe captions - 1-3 short paragraphs, hook first line
+- Mention the Murrumbidgee riverside setting naturally and often
+- Wagga Wagga called out by name in most posts (local SEO + community)
+- Cafe is NEW - don't reference loyal regulars or years of history
+- Brand voice: warm, welcoming, local - friendly neighbourhood cafe, never corporate
+- Wagga gets real winters - cosy/foggy morning content works here (unlike QLD clients)
+- Content pillars: menu hero, coffee, riverside lifestyle, local love, hotel cross-promo, behind the counter
+- Hashtags: #HenryWagga #WaggaWagga #WaggaCafe #WaggaEats #RiversideCafe #WaggaCoffee #LawsonRiversideSuites
+- PIN: 2650 | Contact: Jack MacKinnon (jack@claremontgroup.com.au)
+
 **Phoenix Hospitality Group (Hospitality Labour Hire):**
 - Labour hire company for hospitality industry - NOT just cleaning
 - Services: Kitchen Stewards, Apprentice Chefs, Qualified Chefs, Bar Staff, Front of House, Commercial Cleaning
