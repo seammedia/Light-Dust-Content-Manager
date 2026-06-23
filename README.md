@@ -567,6 +567,29 @@ Standard steps for adding a new client:
 4. Create post script at `scripts/add-[client]-posts.mjs` using existing scripts as template
 5. Posts require explicit `id` field - generate with timestamp + random string pattern
 
+### "Posted" Must Be System-Only (Critical)
+**Symptom:** A client reports posts show "POSTED" in the dashboard but never appear
+on their social platform / in Late.
+
+**Root cause:** `'Posted'` was a manually selectable option in the status dropdown.
+Selecting it just wrote the label to the DB via `handleUpdatePost` - it never sent
+the post anywhere. The actual publish only happens via `handleAutoPost`, which fires
+**only when status transitions to `'Approved'`** (App.tsx, `isStatusChange` checks
+`value === 'Approved'`). A client picking "Posted" thinking it publishes the post
+gets a post labelled Posted that was never sent.
+
+**How to confirm:** a genuinely published post has a `late_post_id`. Query posts
+with `status = 'Posted' AND (late_post_id IS NULL OR late_post_id = '')` - those were
+mislabelled and never reached Late.
+
+**Fix:** "Posted" is now a system-only status. The dropdown only renders the
+`<option value="Posted">` when `post.status === 'Posted'` already, so it can display
+the current value but can never be chosen for a not-yet-posted post. The furthest a
+user can manually take a post is "Approved", which triggers the real auto-post.
+
+**Note:** the auto-post early-returns (no assigned Late profiles, or Instagram with no
+media) correctly leave the status at "Approved" rather than falsely claiming "Posted".
+
 ### Late API Scheduling Failures
 **"Media fetch failed, retrying..." errors on Instagram posts:**
 - This is a Late platform issue, not a Meta/Instagram problem
