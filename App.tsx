@@ -16,7 +16,7 @@ import { uploadMedia, uploadImage, detectMediaType } from './services/storageSer
 
 // Inactive clients - hidden from master account and client selector
 // Remove a name from this list to re-activate the client
-const INACTIVE_CLIENTS = ['Flagworks', 'Light Dust', 'Mabii Co', 'Efficient Finance', 'Phoenix Hospitality Group', 'Mediterranean Blu Spritz', 'The Mastery Lab', 'Little Windmill Clothing Co', 'Lease of Mind', 'Bark Hair', 'NSW Fishing League', 'Laud Recovery', 'Familia Fitness', 'Goochs Garage', 'KHY Physio'];
+const INACTIVE_CLIENTS = ['Flagworks', 'Light Dust', 'Mabii Co', 'Efficient Finance', 'Phoenix Hospitality Group', 'Mediterranean Blu Spritz', 'The Mastery Lab', 'Little Windmill Clothing Co', 'Lease of Mind', 'Bark Hair', 'NSW Fishing League', 'Laud Recovery', 'Familia Fitness', 'Goochs Garage', 'KHY Physio', 'Advanced Rigging'];
 
 // Debounced Textarea Component - prevents typing lag
 function DebouncedTextarea({
