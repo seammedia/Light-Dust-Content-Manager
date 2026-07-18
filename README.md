@@ -601,7 +601,7 @@ media) correctly leave the status at "Approved" rather than falsely claiming "Po
 ### Duplicate Scheduling Protection
 
 Every create request must include the content-manager post ID. The server first
-atomically claims that post in Supabase, then sends a deterministic
+atomically reserves that post's `late_post_id` in Supabase, then sends a deterministic
 `x-request-id` to Zernio. This protects all scheduling entry points, browsers,
 and server instances with the same rules:
 
@@ -612,8 +612,8 @@ and server instances with the same rules:
   manual reconciliation rather than risking a second post.
 - Definitive validation failures can be corrected and retried safely.
 
-The database support for this guard is in
-`supabase/migrations/20260718222407_prevent_duplicate_social_scheduling.sql`.
+The reservation uses the existing `late_post_id` column, so it remains durable
+across browsers, deployments, and server restarts.
 
 ## Troubleshooting
 

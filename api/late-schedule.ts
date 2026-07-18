@@ -7,7 +7,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
  *
  * Duplicate protection has two layers:
  * 1. Atomically claim the content-manager post in Supabase before any external
- *    request. Only one request can move a post into "processing".
+ *    request. A reserved late_post_id value means only one request can proceed.
  * 2. Send a stable x-request-id so a retry of the same logical request is
  *    idempotent at Zernio too.
  */
@@ -91,21 +91,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const requestId = stableRequestId(postId);
-  const startedAt = new Date().toISOString();
+  const claimToken = `scheduling:${requestId}`;
 
   // PostgreSQL re-checks this predicate after a concurrent row lock is
   // released, so exactly one contender can claim an unscheduled post.
   const { data: claimedRows, error: claimError } = await supabase
     .from('posts')
-    .update({
-      late_scheduling_state: 'processing',
-      late_scheduling_request_id: requestId,
-      late_scheduling_started_at: startedAt,
-      late_scheduling_error: null,
-    })
+    .update({ late_post_id: claimToken })
     .eq('id', postId)
     .is('late_post_id', null)
-    .or('late_scheduling_state.is.null,late_scheduling_state.eq.failed')
     .select('id');
 
   if (claimError) {
@@ -116,7 +110,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!claimedRows?.length) {
     const { data: existing, error: existingError } = await supabase
       .from('posts')
-      .select('late_post_id, late_scheduling_state')
+      .select('late_post_id')
       .eq('id', postId)
       .maybeSingle();
 
@@ -127,7 +121,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!existing) {
       return res.status(404).json({ error: 'Content-manager post not found' });
     }
-    if (existing.late_post_id) {
+    if (existing.late_post_id && !existing.late_post_id.startsWith('scheduling:')) {
       return res.status(200).json({
         id: existing.late_post_id,
         post: { _id: existing.late_post_id },
@@ -191,30 +185,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // the provider may have created the post before the response was lost.
         await supabase
           .from('posts')
-          .update({ late_scheduling_state: 'failed', late_scheduling_error: upstreamError })
+          .update({ late_post_id: null })
           .eq('id', postId)
-          .eq('late_scheduling_request_id', requestId)
-          .is('late_post_id', null);
-      } else {
-        await supabase
-          .from('posts')
-          .update({ late_scheduling_error: `Ambiguous provider failure: ${upstreamError}` })
-          .eq('id', postId)
-          .eq('late_scheduling_request_id', requestId)
-          .is('late_post_id', null);
+          .eq('late_post_id', claimToken);
       }
 
       return res.status(response.status).json({ error: upstreamError });
     }
 
     if (!latePostId) {
-      await supabase
-        .from('posts')
-        .update({ late_scheduling_error: 'Zernio accepted the request but returned no post ID' })
-        .eq('id', postId)
-        .eq('late_scheduling_request_id', requestId)
-        .is('late_post_id', null);
-
       return res.status(502).json({
         error: 'Zernio accepted the request but returned no post ID. The post is locked to prevent a duplicate.',
       });
@@ -225,12 +204,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .update({
         status: 'Posted',
         late_post_id: latePostId,
-        late_scheduling_state: 'scheduled',
-        late_scheduling_error: null,
       })
       .eq('id', postId)
-      .eq('late_scheduling_request_id', requestId)
-      .is('late_post_id', null)
+      .eq('late_post_id', claimToken)
       .select('id');
 
     if (saveError || !savedRows?.length) {
@@ -247,16 +223,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       duplicatePrevented: acceptedExistingPost,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown network error';
     // Do not release the claim: a connection failure can happen after Zernio
     // created the post but before this function received the response.
-    await supabase
-      .from('posts')
-      .update({ late_scheduling_error: `Ambiguous network failure: ${message}` })
-      .eq('id', postId)
-      .eq('late_scheduling_request_id', requestId)
-      .is('late_post_id', null);
-
     console.error('Zernio schedule request failed ambiguously:', error);
     return res.status(502).json({
       error: 'The scheduling result could not be confirmed. The post is locked to prevent a duplicate.',

@@ -531,7 +531,10 @@ const mapDbToPost = (dbPost: any): Post => ({
   generatedCaption: dbPost.generated_caption || '',
   generatedHashtags: dbPost.generated_hashtags || [],
   notes: dbPost.notes || '',
-  latePostId: dbPost.late_post_id || null
+  // A scheduling:* value is a durable in-flight claim, not a provider post ID.
+  latePostId: dbPost.late_post_id && !dbPost.late_post_id.startsWith('scheduling:')
+    ? dbPost.late_post_id
+    : null
 });
 
 // Map App types to DB columns
