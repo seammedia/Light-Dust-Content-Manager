@@ -1056,6 +1056,7 @@ export default function App() {
 
       // Schedule the post via Late API (use all carousel images if available)
       const lateResponse = await schedulePost({
+        postId,
         platforms,
         content,
         mediaUrls: allMediaUrls,
@@ -1069,12 +1070,8 @@ export default function App() {
       const latePostId = responseAny?.post?._id || responseAny?.post?.id || responseAny?.id || responseAny?._id || undefined;
       console.log(`Auto-scheduled post ${postId} to ${platforms.length} platform(s) for ${scheduledFor}`, latePostId ? `(Late ID: ${latePostId})` : '(No Late ID in response)');
 
-      // Update status to "Posted" and save Late post ID for future rescheduling
+      // The server has already finalized the durable database record.
       setPosts(prev => prev.map(p => p.id === postId ? { ...p, status: 'Posted' as const, latePostId } : p));
-      await supabase
-        .from('posts')
-        .update({ status: 'Posted', late_post_id: latePostId })
-        .eq('id', postId);
     } catch (error) {
       console.error('Auto-schedule error:', error);
     }
@@ -1320,6 +1317,7 @@ export default function App() {
           });
 
           const lateResponse = await schedulePost({
+            postId: post.id,
             platforms,
             content,
             mediaUrls: allMediaUrls,
@@ -1331,18 +1329,11 @@ export default function App() {
           const latePostId = lateResponse?.id || undefined;
           successCount++;
 
-          // Update post status and save Late post ID
-          const { error: updateError } = await supabase
-            .from('posts')
-            .update({
-              status: 'Posted',
-              late_post_id: latePostId
-            })
-            .eq('id', post.id);
-
-          if (updateError) {
-            console.error('Error saving late_post_id:', updateError);
-          }
+          // The server atomically claims and updates the database record. Keep
+          // local state in sync without issuing a second, client-side write.
+          setPosts(prev => prev.map(p => p.id === post.id
+            ? { ...p, status: 'Posted' as const, latePostId }
+            : p));
         } catch (error: any) {
           console.error(`Error scheduling post ${post.id}:`, error);
           const mediaInfo = post.mediaType === 'video' ? ' (video)' : ' (image)';

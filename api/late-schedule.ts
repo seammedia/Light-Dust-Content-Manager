@@ -1,112 +1,265 @@
+import { createHash } from 'node:crypto';
+import { createClient } from '@supabase/supabase-js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 /**
- * Vercel Serverless Function for Late API - Schedule Post
- * Proxies requests to Late API to avoid CORS issues
+ * Vercel Serverless Function for Zernio (formerly Late) - Schedule Post
+ *
+ * Duplicate protection has two layers:
+ * 1. Atomically claim the content-manager post in Supabase before any external
+ *    request. Only one request can move a post into "processing".
+ * 2. Send a stable x-request-id so a retry of the same logical request is
+ *    idempotent at Zernio too.
  */
 
-const LATE_API_BASE = 'https://getlate.dev/api/v1';
+const ZERNIO_API_BASE = 'https://zernio.com/api/v1';
 
 interface SchedulePostRequest {
+  postId: string;
   platforms: { platform: string; accountId: string }[];
   content: string;
   mediaUrls?: string[];
-  mediaType?: 'image' | 'video'; // Media type for the post
+  mediaType?: 'image' | 'video';
   scheduledFor: string;
   timezone?: string;
 }
 
+interface ZernioPost {
+  _id?: string;
+  id?: string;
+}
+
+interface ZernioResponse {
+  id?: string;
+  _id?: string;
+  post?: ZernioPost;
+  existingPost?: ZernioPost;
+  details?: { existingPostId?: string };
+  error?: string;
+  message?: string;
+  detail?: string;
+}
+
+const stableRequestId = (postId: string): string => {
+  const hash = createHash('sha256').update(`seam-media:zernio:${postId}`).digest('hex');
+  // Format the deterministic digest as an RFC 4122 UUID. Zernio recommends a
+  // UUID request ID, and using the post ID as the seed keeps retries stable.
+  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
+};
+
+const getZernioPostId = (data: ZernioResponse): string | undefined =>
+  data.post?._id ||
+  data.post?.id ||
+  data.existingPost?._id ||
+  data.existingPost?.id ||
+  data.details?.existingPostId ||
+  data.id ||
+  data._id;
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Only allow POST requests
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = process.env.VITE_LATE_API_KEY;
+  const apiKey = process.env.ZERNIO_API_KEY || process.env.VITE_LATE_API_KEY;
+  const supabaseUrl = process.env.VITE_SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
   if (!apiKey) {
-    return res.status(500).json({ error: 'Late API key not configured' });
+    return res.status(500).json({ error: 'Zernio API key not configured' });
+  }
+  if (!supabaseUrl || !supabaseKey) {
+    return res.status(500).json({ error: 'Supabase server credentials not configured' });
+  }
+
+  const { postId, platforms, content, mediaUrls, mediaType, scheduledFor, timezone } =
+    req.body as SchedulePostRequest;
+
+  if (!postId || !platforms?.length || !content || !scheduledFor) {
+    return res.status(400).json({
+      error: 'Missing required fields: postId, platforms, content, scheduledFor',
+    });
+  }
+
+  const hasInstagram = platforms.some(platform => platform.platform === 'instagram');
+  const publicUrls = (mediaUrls || []).filter(url => url && !url.startsWith('data:'));
+  if (hasInstagram && publicUrls.length === 0) {
+    return res.status(400).json({ error: 'Instagram posts require media content (images or videos)' });
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const requestId = stableRequestId(postId);
+  const startedAt = new Date().toISOString();
+
+  // PostgreSQL re-checks this predicate after a concurrent row lock is
+  // released, so exactly one contender can claim an unscheduled post.
+  const { data: claimedRows, error: claimError } = await supabase
+    .from('posts')
+    .update({
+      late_scheduling_state: 'processing',
+      late_scheduling_request_id: requestId,
+      late_scheduling_started_at: startedAt,
+      late_scheduling_error: null,
+    })
+    .eq('id', postId)
+    .is('late_post_id', null)
+    .or('late_scheduling_state.is.null,late_scheduling_state.eq.failed')
+    .select('id');
+
+  if (claimError) {
+    console.error('Unable to claim post for Zernio scheduling:', claimError);
+    return res.status(500).json({ error: 'Unable to reserve this post for scheduling' });
+  }
+
+  if (!claimedRows?.length) {
+    const { data: existing, error: existingError } = await supabase
+      .from('posts')
+      .select('late_post_id, late_scheduling_state')
+      .eq('id', postId)
+      .maybeSingle();
+
+    if (existingError) {
+      console.error('Unable to inspect existing scheduling claim:', existingError);
+      return res.status(500).json({ error: 'Unable to verify this post scheduling state' });
+    }
+    if (!existing) {
+      return res.status(404).json({ error: 'Content-manager post not found' });
+    }
+    if (existing.late_post_id) {
+      return res.status(200).json({
+        id: existing.late_post_id,
+        post: { _id: existing.late_post_id },
+        existingPost: true,
+        message: 'This post was already scheduled; no duplicate was created.',
+      });
+    }
+
+    return res.status(409).json({
+      error: 'This post is already being scheduled. No duplicate request was sent.',
+      code: 'SCHEDULE_IN_PROGRESS',
+    });
+  }
+
+  const requestBody: Record<string, unknown> = {
+    platforms,
+    content,
+    scheduledFor,
+    timezone: timezone || 'Australia/Sydney',
+    publishNow: false,
+    isDraft: false,
+  };
+
+  if (publicUrls.length > 0) {
+    requestBody.mediaItems = publicUrls.map(url => ({
+      type: mediaType || 'image',
+      url,
+    }));
   }
 
   try {
-    const { platforms, content, mediaUrls, mediaType, scheduledFor, timezone } = req.body as SchedulePostRequest;
-
-    // Validate required fields
-    if (!platforms || !content || !scheduledFor) {
-      return res.status(400).json({ error: 'Missing required fields: platforms, content, scheduledFor' });
-    }
-
-    // Check if Instagram is in the platforms and validate media is provided
-    const hasInstagram = platforms.some(p => p.platform === 'instagram');
-    const hasValidMedia = mediaUrls && mediaUrls.length > 0 && mediaUrls.some(url => url && !url.startsWith('data:'));
-
-    if (hasInstagram && !hasValidMedia) {
-      return res.status(400).json({ error: 'Instagram posts require media content (images or videos)' });
-    }
-
-    // Build the request body according to Late API spec
-    const requestBody: any = {
-      platforms,
-      content,
-      scheduledFor,
-      timezone: timezone || 'Australia/Sydney', // Default timezone
-      publishNow: false,
-      isDraft: false,
-    };
-
-    // Add media items if provided (Late expects mediaItems array with type and url)
-    if (mediaUrls && mediaUrls.length > 0) {
-      // Filter out base64 data URLs as Late API needs public URLs
-      const publicUrls = mediaUrls.filter(url => !url.startsWith('data:'));
-      if (publicUrls.length > 0) {
-        // Use the provided mediaType, or default to 'image'
-        const type = mediaType || 'image';
-        requestBody.mediaItems = publicUrls.map(url => ({
-          type: type,
-          url: url,
-        }));
-      }
-    }
-
-    console.log('Late API schedule request:', JSON.stringify(requestBody, null, 2));
-
-    const response = await fetch(`${LATE_API_BASE}/posts`, {
+    const response = await fetch(`${ZERNIO_API_BASE}/posts`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
+        'x-request-id': requestId,
       },
       body: JSON.stringify(requestBody),
     });
 
     const responseText = await response.text();
-    console.log('Late API schedule response:', response.status, responseText);
+    let data: ZernioResponse = {};
+    try {
+      data = responseText ? JSON.parse(responseText) : {};
+    } catch {
+      data = { message: responseText };
+    }
 
-    if (!response.ok) {
-      let error;
-      try {
-        error = JSON.parse(responseText);
-      } catch {
-        error = { message: responseText };
+    // A 409 contains the already-created post ID when Zernio's content hash
+    // catches a duplicate. Adopt that post instead of creating another.
+    const latePostId = getZernioPostId(data);
+    const acceptedExistingPost = response.status === 409 && !!latePostId;
+
+    if (!response.ok && !acceptedExistingPost) {
+      const upstreamError = data.error || data.message || data.detail || `Zernio API error: ${response.status}`;
+
+      if (response.status < 500) {
+        // A completed 4xx response is a definitive rejection, so a corrected
+        // request may safely try again. 5xx/network failures stay locked because
+        // the provider may have created the post before the response was lost.
+        await supabase
+          .from('posts')
+          .update({ late_scheduling_state: 'failed', late_scheduling_error: upstreamError })
+          .eq('id', postId)
+          .eq('late_scheduling_request_id', requestId)
+          .is('late_post_id', null);
+      } else {
+        await supabase
+          .from('posts')
+          .update({ late_scheduling_error: `Ambiguous provider failure: ${upstreamError}` })
+          .eq('id', postId)
+          .eq('late_scheduling_request_id', requestId)
+          .is('late_post_id', null);
       }
-      console.error('Late API error details:', error);
-      return res.status(response.status).json({
-        error: error.message || error.error || error.detail || JSON.stringify(error) || `Late API error: ${response.status}`
+
+      return res.status(response.status).json({ error: upstreamError });
+    }
+
+    if (!latePostId) {
+      await supabase
+        .from('posts')
+        .update({ late_scheduling_error: 'Zernio accepted the request but returned no post ID' })
+        .eq('id', postId)
+        .eq('late_scheduling_request_id', requestId)
+        .is('late_post_id', null);
+
+      return res.status(502).json({
+        error: 'Zernio accepted the request but returned no post ID. The post is locked to prevent a duplicate.',
       });
     }
 
-    let data;
-    try {
-      data = JSON.parse(responseText);
-    } catch {
-      data = { success: true };
+    const { data: savedRows, error: saveError } = await supabase
+      .from('posts')
+      .update({
+        status: 'Posted',
+        late_post_id: latePostId,
+        late_scheduling_state: 'scheduled',
+        late_scheduling_error: null,
+      })
+      .eq('id', postId)
+      .eq('late_scheduling_request_id', requestId)
+      .is('late_post_id', null)
+      .select('id');
+
+    if (saveError || !savedRows?.length) {
+      console.error('Zernio post created but database finalization failed:', saveError);
+      return res.status(500).json({
+        error: 'The post was scheduled but its record could not be finalized. It remains locked to prevent a duplicate.',
+      });
     }
 
-    return res.status(200).json(data);
+    return res.status(acceptedExistingPost ? 200 : response.status).json({
+      ...data,
+      id: latePostId,
+      post: data.post || { _id: latePostId },
+      duplicatePrevented: acceptedExistingPost,
+    });
   } catch (error) {
-    console.error('Late API schedule error:', error);
-    return res.status(500).json({
-      error: error instanceof Error ? error.message : 'Unknown error',
+    const message = error instanceof Error ? error.message : 'Unknown network error';
+    // Do not release the claim: a connection failure can happen after Zernio
+    // created the post but before this function received the response.
+    await supabase
+      .from('posts')
+      .update({ late_scheduling_error: `Ambiguous network failure: ${message}` })
+      .eq('id', postId)
+      .eq('late_scheduling_request_id', requestId)
+      .is('late_post_id', null);
+
+    console.error('Zernio schedule request failed ambiguously:', error);
+    return res.status(502).json({
+      error: 'The scheduling result could not be confirmed. The post is locked to prevent a duplicate.',
     });
   }
 }

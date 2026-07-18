@@ -10,6 +10,7 @@ export interface LateProfile {
 }
 
 export interface SchedulePostParams {
+  postId: string; // Stable content-manager ID used to prevent duplicate scheduling
   platforms: { platform: string; accountId: string }[];
   content: string;
   mediaUrls?: string[];
@@ -56,6 +57,7 @@ export const schedulePost = async (params: SchedulePostParams): Promise<{ id: st
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
+      postId: params.postId,
       platforms: params.platforms,
       content: params.content,
       mediaUrls: params.mediaUrls || [],
