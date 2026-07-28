@@ -15,9 +15,16 @@ import { uploadImage } from '../services/storageService';
 
 interface GeneratePostsModalProps {
   client: Client;
+  pin: string;
   onClose: () => void;
   onPostsGenerated: () => void;
 }
+
+type ContentContext = {
+  profile: { industry?: string; audience?: string; compliance_notes?: string } | null;
+  ideas: Array<{ id: string; title: string; angle: string; source_title: string; source_url: string; source_summary?: string; risk_notes?: string }>;
+  learnings: Array<{ statement: string; recommendation: string; confidence: number; sample_size: number }>;
+};
 
 // Extract Google Drive folder URL from client notes
 const extractDriveFolderUrl = (notes: string): string | null => {
@@ -46,8 +53,9 @@ const generateContentIdeas = async (
   brandTone: string,
   brandKeywords: string[],
   clientNotes: string,
-  numberOfPosts: number
-): Promise<{ caption: string; hashtags: string[] }[]> => {
+  numberOfPosts: number,
+  context: ContentContext | null
+): Promise<{ caption: string; hashtags: string[]; sourceIdeaId: string; sourceUrl: string }[]> => {
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error('Gemini API key not configured.');
@@ -65,6 +73,15 @@ const generateContentIdeas = async (
       ${brandTone ? `Brand Tone: ${brandTone}` : ''}
       ${brandKeywords?.length ? `Key Themes: ${brandKeywords.join(", ")}` : ''}
       ${clientNotes ? `\nClient Guidelines: ${clientNotes}` : ''}
+      ${context?.profile?.industry ? `\nIndustry: ${context.profile.industry}` : ''}
+      ${context?.profile?.audience ? `\nAudience: ${context.profile.audience}` : ''}
+      ${context?.profile?.compliance_notes ? `\nCompliance rules: ${context.profile.compliance_notes}` : ''}
+
+      Proven content learnings:
+      ${context?.learnings?.length ? context.learnings.map((learning) => `- ${learning.recommendation} (confidence ${learning.confidence}, sample ${learning.sample_size})`).join('\n') : '- No reliable performance learnings yet. Do not invent them.'}
+
+      Current sourced opportunities:
+      ${context?.ideas?.length ? context.ideas.map((idea) => `- ID ${idea.id}: ${idea.title}. Angle: ${idea.angle}. Source: ${idea.source_title} ${idea.source_url}. ${idea.risk_notes || ''}`).join('\n') : '- No current sourced opportunities are available. Use evergreen brand expertise.'}
 
       Your task is to generate ${numberOfPosts} unique Instagram post ideas.
 
@@ -78,6 +95,10 @@ const generateContentIdeas = async (
       - Include a subtle call to action at the end.
       - Keep captions concise but engaging (3-5 short paragraphs).
       - Generate 4-5 relevant hashtags per post (without the # symbol).
+      - Use a current sourced opportunity only when it is genuinely relevant.
+      - Never copy article wording. Add the client's own useful angle.
+      - When using an opportunity, return its exact ID and URL. Otherwise return empty strings.
+      - Treat analytics as directional. Do not overfit to a single post.
     `,
     generationConfig: {
       responseMimeType: "application/json",
@@ -94,8 +115,10 @@ const generateContentIdeas = async (
                   type: SchemaType.ARRAY,
                   items: { type: SchemaType.STRING },
                 },
+                sourceIdeaId: { type: SchemaType.STRING },
+                sourceUrl: { type: SchemaType.STRING },
               },
-              required: ["caption", "hashtags"],
+              required: ["caption", "hashtags", "sourceIdeaId", "sourceUrl"],
             },
           },
         },
@@ -125,13 +148,18 @@ const generateContentIdeas = async (
   const parsed = JSON.parse(text);
 
   // Clean up any em dashes that might have slipped through
-  return (parsed.posts || []).map((post: any) => ({
-    caption: (post.caption || '').replace(/—/g, ', ').replace(/–/g, ', '),
-    hashtags: (post.hashtags || []).slice(0, 5),
-  }));
+  return (parsed.posts || []).map((post: any) => {
+    const selectedIdea = context?.ideas.find((idea) => idea.id === post.sourceIdeaId);
+    return {
+      caption: (post.caption || '').replace(/—/g, ', ').replace(/–/g, ', '),
+      hashtags: (post.hashtags || []).slice(0, 5),
+      sourceIdeaId: selectedIdea?.id || '',
+      sourceUrl: selectedIdea?.source_url || '',
+    };
+  });
 };
 
-export function GeneratePostsModal({ client, onClose, onPostsGenerated }: GeneratePostsModalProps) {
+export function GeneratePostsModal({ client, pin, onClose, onPostsGenerated }: GeneratePostsModalProps) {
   const [numberOfPosts, setNumberOfPosts] = useState(3);
   const [startDate, setStartDate] = useState(() => {
     const tomorrow = new Date();
@@ -196,6 +224,16 @@ export function GeneratePostsModal({ client, onClose, onPostsGenerated }: Genera
     setProgress('Generating content ideas...');
 
     try {
+      let context: ContentContext | null = null;
+      try {
+        const contextResponse = await fetch(`/api/content-context?clientId=${encodeURIComponent(client.id)}`, {
+          headers: { 'x-portal-pin': pin },
+        });
+        if (contextResponse.ok) context = await contextResponse.json();
+      } catch (contextError) {
+        console.warn('Content intelligence context unavailable:', contextError);
+      }
+
       // Generate content ideas
       const contentIdeas = await generateContentIdeas(
         client.brand_name,
@@ -203,7 +241,8 @@ export function GeneratePostsModal({ client, onClose, onPostsGenerated }: Genera
         client.brand_tone || '',
         client.brand_keywords || [],
         client.client_notes || '',
-        numberOfPosts
+        numberOfPosts,
+        context
       );
 
       if (contentIdeas.length === 0) {
@@ -280,12 +319,12 @@ export function GeneratePostsModal({ client, onClose, onPostsGenerated }: Genera
           client_id: client.id,
           title: `Post ${i + 1}`,
           date: date,
-          status: 'Generated',
+          status: 'For Approval',
           image_description: '',
           image_url: imageUrl,
           generated_caption: idea.caption,
           generated_hashtags: idea.hashtags,
-          notes: '',
+          notes: idea.sourceUrl ? `Source used for this draft: ${idea.sourceUrl}` : '',
         });
       }
 
@@ -298,6 +337,15 @@ export function GeneratePostsModal({ client, onClose, onPostsGenerated }: Genera
 
       if (insertError) {
         throw new Error(`Failed to create posts: ${insertError.message}`);
+      }
+
+      const usedIdeaIds = [...new Set(contentIdeas.map((idea) => idea.sourceIdeaId).filter(Boolean))];
+      if (usedIdeaIds.length) {
+        await fetch('/api/content-context', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'x-portal-pin': pin },
+          body: JSON.stringify({ clientId: client.id, usedIdeaIds }),
+        }).catch(() => undefined);
       }
 
       setProgress('Done!');

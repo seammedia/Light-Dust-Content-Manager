@@ -1,28 +1,33 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import socialConnectionsHandler from '../server/socialConnections.js';
 
 /**
- * Vercel Serverless Function for Late API - Get Accounts
- * Proxies requests to Late API to avoid CORS issues
+ * Vercel Serverless Function for Zernio (formerly Late) - Get Accounts
+ * Proxies requests to Zernio to avoid CORS issues
  * Uses /accounts endpoint to get individual platform connections
  */
 
-const LATE_API_BASE = 'https://getlate.dev/api/v1';
+const ZERNIO_API_BASE = 'https://zernio.com/api/v1';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.query.mode === 'social-connections') {
+    return socialConnectionsHandler(req, res);
+  }
+
   // Only allow GET requests
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = process.env.VITE_LATE_API_KEY;
+  const apiKey = process.env.ZERNIO_API_KEY || process.env.VITE_LATE_API_KEY;
 
   if (!apiKey) {
-    return res.status(500).json({ error: 'Late API key not configured' });
+    return res.status(500).json({ error: 'Zernio API key not configured' });
   }
 
   try {
     // Use /accounts endpoint to get individual social media accounts
-    const response = await fetch(`${LATE_API_BASE}/accounts`, {
+    const response = await fetch(`${ZERNIO_API_BASE}/accounts`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
@@ -32,14 +37,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      console.error('Late API error response:', error);
+      console.error('Zernio API error response:', error);
       return res.status(response.status).json({
-        error: error.message || error.error || `Late API error: ${response.status}`
+        error: error.message || error.error || `Zernio API error: ${response.status}`
       });
     }
 
     const data = await response.json();
-    console.log('Late API accounts response:', JSON.stringify(data, null, 2));
+    console.log('Zernio API accounts response received.');
 
     // Normalize the response - Late API returns accounts array
     let accounts = [];
@@ -65,7 +70,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json({ profiles: normalizedProfiles });
   } catch (error) {
-    console.error('Late API accounts error:', error);
+    console.error('Zernio API accounts error:', error);
     return res.status(500).json({
       error: error instanceof Error ? error.message : 'Unknown error',
     });

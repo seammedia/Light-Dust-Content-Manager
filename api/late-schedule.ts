@@ -20,6 +20,7 @@ interface SchedulePostRequest {
   content: string;
   mediaUrls?: string[];
   mediaType?: 'image' | 'video';
+  contentType?: 'post' | 'reel' | 'story';
   scheduledFor: string;
   timezone?: string;
 }
@@ -56,6 +57,22 @@ const getZernioPostId = (data: ZernioResponse): string | undefined =>
   data.id ||
   data._id;
 
+export const buildZernioPlatforms = (
+  platforms: { platform: string; accountId: string }[],
+  contentType: 'post' | 'reel' | 'story',
+) => platforms.map(target => {
+  if (target.platform === 'instagram' && contentType === 'story') {
+    return { ...target, platformSpecificData: { contentType: 'story' } };
+  }
+  if (target.platform === 'instagram' && contentType === 'reel') {
+    return { ...target, platformSpecificData: { contentType: 'reels', shareToFeed: true } };
+  }
+  if (target.platform === 'facebook' && contentType !== 'post') {
+    return { ...target, platformSpecificData: { contentType } };
+  }
+  return target;
+});
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -72,19 +89,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'Supabase server credentials not configured' });
   }
 
-  const { postId, platforms, content, mediaUrls, mediaType, scheduledFor, timezone } =
+  const { postId, platforms, content, mediaUrls, mediaType, contentType = 'post', scheduledFor, timezone } =
     req.body as SchedulePostRequest;
 
-  if (!postId || !platforms?.length || !content || !scheduledFor) {
+  if (!postId || !platforms?.length || !scheduledFor) {
     return res.status(400).json({
-      error: 'Missing required fields: postId, platforms, content, scheduledFor',
+      error: 'Missing required fields: postId, platforms, scheduledFor',
     });
+  }
+
+  if (!['post', 'reel', 'story'].includes(contentType)) {
+    return res.status(400).json({ error: 'Content type must be post, reel, or story' });
   }
 
   const hasInstagram = platforms.some(platform => platform.platform === 'instagram');
   const publicUrls = (mediaUrls || []).filter(url => url && !url.startsWith('data:'));
+  if (!content?.trim() && publicUrls.length === 0) {
+    return res.status(400).json({ error: 'Add a caption or media before scheduling' });
+  }
   if (hasInstagram && publicUrls.length === 0) {
     return res.status(400).json({ error: 'Instagram posts require media content (images or videos)' });
+  }
+  if (contentType === 'story') {
+    const unsupportedPlatforms = platforms.filter(({ platform }) => !['instagram', 'facebook'].includes(platform));
+    if (unsupportedPlatforms.length > 0) {
+      return res.status(400).json({
+        error: 'Stories can only be scheduled to Instagram or Facebook. Deselect the other platforms first.',
+      });
+    }
+    if (publicUrls.length !== 1) {
+      return res.status(400).json({ error: 'Stories require exactly one image or video' });
+    }
+  }
+  if (contentType === 'reel' && (mediaType !== 'video' || publicUrls.length !== 1)) {
+    return res.status(400).json({ error: 'Reels require exactly one video' });
   }
 
   const supabase = createClient(supabaseUrl, supabaseKey, {
@@ -136,9 +174,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
+  const zernioPlatforms = buildZernioPlatforms(platforms, contentType);
+
   const requestBody: Record<string, unknown> = {
-    platforms,
-    content,
+    platforms: zernioPlatforms,
+    content: content || '',
     scheduledFor,
     timezone: timezone || 'Australia/Sydney',
     publishNow: false,

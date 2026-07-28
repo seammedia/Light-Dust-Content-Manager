@@ -1,0 +1,7 @@
+clients/
+scripts/
+tmp/
+.claude/
+codex-skills/
+*.sql
+*.md

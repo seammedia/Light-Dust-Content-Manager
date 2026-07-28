@@ -15,6 +15,7 @@ export interface SchedulePostParams {
   content: string;
   mediaUrls?: string[];
   mediaType?: 'image' | 'video'; // Type of media being posted
+  contentType?: 'post' | 'reel' | 'story'; // Feed post, reel, or story
   scheduledFor: string; // ISO 8601 format
 }
 
@@ -26,9 +27,10 @@ export interface ScheduledPost {
   status: string;
 }
 
-// Check if Late API is configured (by checking if env var exists)
+// Social credentials are kept on the server. The UI can safely render the
+// scheduling controls without exposing an API key in the browser bundle.
 export const isLateConfigured = (): boolean => {
-  return !!import.meta.env.VITE_LATE_API_KEY;
+  return true;
 };
 
 // Fetch connected profiles from Late (via serverless proxy)
@@ -62,6 +64,7 @@ export const schedulePost = async (params: SchedulePostParams): Promise<{ id: st
       content: params.content,
       mediaUrls: params.mediaUrls || [],
       mediaType: params.mediaType || 'image',
+      contentType: params.contentType || 'post',
       scheduledFor: params.scheduledFor,
     }),
   });

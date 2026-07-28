@@ -284,6 +284,25 @@ export const PostEditor: React.FC<PostEditorProps> = ({ post, clientId, onUpdate
                 className="w-full p-2 text-sm border border-stone-200 rounded-lg"
               />
             </div>
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-stone-500 mb-1">Content Type</label>
+              <select
+                aria-label="Content type"
+                value={editedPost.contentType || 'post'}
+                onChange={(e) => setEditedPost({ ...editedPost, contentType: e.target.value as Post['contentType'] })}
+                className="w-full p-2 text-sm border border-stone-200 rounded-lg bg-white"
+              >
+                <option value="post">Post</option>
+                <option value="reel">Reel</option>
+                <option value="story">Story</option>
+              </select>
+              {editedPost.contentType === 'reel' && !isVideo && (
+                <p className="mt-1 text-xs text-amber-600">Upload one video before scheduling this Reel.</p>
+              )}
+              {editedPost.contentType === 'story' && hasMultipleImages && (
+                <p className="mt-1 text-xs text-amber-600">Stories support one image or video at a time.</p>
+              )}
+            </div>
           </div>
         </div>
 

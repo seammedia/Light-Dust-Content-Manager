@@ -1,6 +1,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import { SelfServeSignup } from './components/SelfServeSignup';
+import { SelfServeOnboarding } from './components/SelfServeOnboarding';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -8,8 +10,14 @@ if (!rootElement) {
 }
 
 const root = ReactDOM.createRoot(rootElement);
+const path = window.location.pathname.replace(/\/$/, '') || '/';
+const RootComponent = path === '/signup' || path === '/login' || path === '/auth/callback'
+  ? SelfServeSignup
+  : path === '/onboarding'
+    ? SelfServeOnboarding
+    : App;
 root.render(
   <React.StrictMode>
-    <App />
+    <RootComponent />
   </React.StrictMode>
 );

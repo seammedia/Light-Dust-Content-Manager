@@ -1,12 +1,24 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Post, BrandContext, Client, MediaType } from './types';
+import { Post, BrandContext, Client, MediaType, ContentType } from './types';
 import { PostEditor } from './components/PostEditor';
 import { MetaSettings } from './src/components/MetaSettings';
 import { ClientManagement } from './components/ClientManagement';
 import { GeneratePostsModal } from './components/GeneratePostsModal';
 import { ImageCarousel, CarouselModal, EditableCarouselThumbnails } from './components/ImageCarousel';
+import { ClientPortalSidebar, PortalSection } from './components/ClientPortalSidebar';
+import { ClientHome } from './components/ClientHome';
+import { ClientAccount } from './components/ClientAccount';
+import { ClientConnections } from './components/ClientConnections';
+import { ClientBilling } from './components/ClientBilling';
+import { ClientSupport } from './components/ClientSupport';
+import { ClientAnalytics } from './components/ClientAnalytics';
+import { ClientComments } from './components/ClientComments';
+import { NotificationBell } from './components/NotificationBell';
+import { ClientNotifications } from './components/ClientNotifications';
+import { ClientSocialInbox } from './components/ClientSocialInbox';
+import { LeadManagement } from './components/LeadManagement';
 import { supabase } from './services/supabaseClient';
-import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles, Mail, Clock, Send, FileText, Image, Film, X, LayoutGrid, HardDrive, LogOut, Images } from 'lucide-react';
+import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles, Mail, Clock, Send, FileText, Image, Film, X, HardDrive, LogOut, Images, Columns3 } from 'lucide-react';
 import { generateCaptionFromImage, updateFromFeedback } from './services/geminiService';
 import { generateImageFromFeedback, generateImageFromPrompt } from './services/openaiImageService';
 import { isGmailConnected, getConnectedEmail, connectGmail, sendEmail, clearGmailSettings } from './services/gmailService';
@@ -14,9 +26,47 @@ import { isDriveConnected, getDriveEmail, connectDrive, clearDriveSettings } fro
 import { isLateConfigured, getProfiles, schedulePost, reschedulePost, LateProfile } from './services/lateService';
 import { uploadMedia, uploadImage, detectMediaType } from './services/storageService';
 
+function LockedPlanFeature({ name, plan = 'Max', description }: { name: string; plan?: 'Pro' | 'Max'; description?: string }) {
+  return (
+    <section className="mx-auto flex min-h-[calc(100vh-8rem)] max-w-3xl items-center justify-center p-6">
+      <div className="w-full rounded-2xl border border-stone-200 bg-white px-6 py-14 text-center shadow-sm sm:px-12">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#F5F5F0] text-brand-green">
+          <Lock className="h-6 w-6" />
+        </div>
+        <h1 className="mt-5 font-serif text-3xl font-bold text-brand-dark">{name}</h1>
+        <p className="mt-3 text-base font-semibold text-stone-700">Not available on your current plan</p>
+        <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-stone-500">
+          {description || `Upgrade to the ${plan} plan to access this feature. Your current dashboard and social calendar are unaffected.`}
+        </p>
+      </div>
+    </section>
+  );
+}
+
 // Inactive clients - hidden from master account and client selector
 // Remove a name from this list to re-activate the client
-const INACTIVE_CLIENTS = ['Flagworks', 'Light Dust', 'Mabii Co', 'Efficient Finance', 'Phoenix Hospitality Group', 'Mediterranean Blu Spritz', 'The Mastery Lab', 'Little Windmill Clothing Co', 'Lease of Mind', 'Bark Hair', 'NSW Fishing League', 'Laud Recovery', 'Familia Fitness', 'Goochs Garage', 'KHY Physio', 'Advanced Rigging', 'Sandhurst Roofing'];
+const INACTIVE_CLIENTS = ['Flagworks', 'Light Dust', 'Mabii Co', 'Efficient Finance', 'Phoenix Hospitality Group', 'Mediterranean Blu Spritz', 'The Mastery Lab', 'Little Windmill Clothing Co', 'Lease of Mind', 'Bark Hair', 'NSW Fishing League', 'Laud Recovery', 'Familia Fitness', 'Goochs Garage', 'KHY Physio', 'Sandhurst Roofing'];
+const isVisibleClient = (client: Client) => client.provisioning_status !== 'cancelled' && !INACTIVE_CLIENTS.includes(client.name);
+
+type TableColumnKey = 'date' | 'creative' | 'caption' | 'approval' | 'contentIdeas' | 'comments';
+
+const TABLE_COLUMNS: Array<{ key: TableColumnKey; label: string }> = [
+  { key: 'date', label: 'Date' },
+  { key: 'creative', label: 'Creative' },
+  { key: 'caption', label: 'Caption & Hashtags' },
+  { key: 'approval', label: 'Approval Status' },
+  { key: 'contentIdeas', label: 'Content Ideas' },
+  { key: 'comments', label: 'Additional Comments' },
+];
+
+const DEFAULT_VISIBLE_TABLE_COLUMNS: Record<TableColumnKey, boolean> = {
+  date: true,
+  creative: true,
+  caption: true,
+  approval: true,
+  contentIdeas: true,
+  comments: true,
+};
 
 // Debounced Textarea Component - prevents typing lag
 function DebouncedTextarea({
@@ -190,6 +240,9 @@ function PostDetailModal({ post, onClose }: { post: Post, onClose: () => void })
                   'bg-stone-100 text-stone-600'
                 }`}>
                   {post.status}
+                </span>
+                <span className="inline-flex items-center rounded bg-blue-50 px-2 py-1 text-xs font-semibold uppercase text-blue-700">
+                  {post.contentType === 'reel' ? 'Reel' : post.contentType === 'story' ? 'Story' : 'Post'}
                 </span>
                 {hasCarousel && (
                   <span className="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs font-medium">
@@ -528,6 +581,7 @@ const mapDbToPost = (dbPost: any): Post => ({
   imageUrl: dbPost.image_url || '',
   imageUrls: dbPost.image_urls || [],
   mediaType: (dbPost.media_type as MediaType) || 'image',
+  contentType: (dbPost.content_type as ContentType) || 'post',
   generatedCaption: dbPost.generated_caption || '',
   generatedHashtags: dbPost.generated_hashtags || [],
   notes: dbPost.notes || '',
@@ -548,6 +602,7 @@ const mapPostToDb = (post: Partial<Post>) => {
   if (post.imageUrl !== undefined) dbObj.image_url = post.imageUrl;
   if (post.imageUrls !== undefined) dbObj.image_urls = post.imageUrls;
   if (post.mediaType !== undefined) dbObj.media_type = post.mediaType;
+  if (post.contentType !== undefined) dbObj.content_type = post.contentType;
   if (post.generatedCaption !== undefined) dbObj.generated_caption = post.generatedCaption;
   if (post.generatedHashtags !== undefined) dbObj.generated_hashtags = post.generatedHashtags;
   if (post.notes !== undefined) dbObj.notes = post.notes;
@@ -597,6 +652,7 @@ export default function App() {
   const [loginError, setLoginError] = useState(false);
   const [configError, setConfigError] = useState(false);
   const [isRestoringSession, setIsRestoringSession] = useState(true);
+  const [isSupabaseAuthSession, setIsSupabaseAuthSession] = useState(false);
 
   // Multi-client state
   const [currentClient, setCurrentClient] = useState<Client | null>(null);
@@ -635,6 +691,8 @@ export default function App() {
   const [previewImagePostId, setPreviewImagePostId] = useState<string | null>(null);
   const [previewCarouselImages, setPreviewCarouselImages] = useState<string[] | null>(null);
   const [previewCarouselIndex, setPreviewCarouselIndex] = useState(0);
+  const [visibleTableColumns, setVisibleTableColumns] = useState(DEFAULT_VISIBLE_TABLE_COLUMNS);
+  const visibleTableColumnCount = Object.values(visibleTableColumns).filter(Boolean).length;
 
   // Schedule Posts state
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -647,8 +705,12 @@ export default function App() {
   // Client Notes state (agency-only)
   const [showClientNotesModal, setShowClientNotesModal] = useState(false);
 
-  // Main tab state (agency-only) - 'content' or 'clients'
-  const [mainTab, setMainTab] = useState<'content' | 'clients'>('content');
+  const [portalSection, setPortalSection] = useState<PortalSection>('home');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [notificationUnread, setNotificationUnread] = useState(0);
+  const hasMaxPortalFeatures = isMasterAccount || (currentClient?.plan_name || '').toLowerCase() === 'max';
+  const currentPlan = (currentClient?.plan_name || '').toLowerCase();
+  const hasSocialInbox = isMasterAccount || currentPlan === 'pro' || currentPlan === 'max';
 
   // Generate Posts modal state (agency-only)
   const [showGeneratePostsModal, setShowGeneratePostsModal] = useState(false);
@@ -678,6 +740,42 @@ export default function App() {
   // Restore session from localStorage on load
   useEffect(() => {
     const restoreSession = async () => {
+      const { data: authData } = await supabase.auth.getSession();
+      const authUser = authData.session?.user;
+      if (authUser) {
+        const { data: authClient } = await supabase
+          .from('clients')
+          .select('*')
+          .eq('owner_user_id', authUser.id)
+          .maybeSingle();
+        if (authClient?.provisioning_status === 'pending_intake') {
+          window.location.replace('/onboarding');
+          return;
+        }
+        if (authClient?.provisioning_status === 'cancelled') {
+          await supabase.auth.signOut();
+          setIsRestoringSession(false);
+          return;
+        }
+        if (authClient) {
+          setIsSupabaseAuthSession(true);
+          setIsMasterAccount(false);
+          setUserClients([authClient]);
+          setCurrentClient(authClient);
+          setBrandContext({
+            name: authClient.brand_name,
+            mission: authClient.brand_mission || '',
+            tone: authClient.brand_tone || '',
+            keywords: authClient.brand_keywords || [],
+          });
+          setIsAuthenticated(true);
+          setIsRestoringSession(false);
+          return;
+        }
+        window.location.replace('/signup');
+        return;
+      }
+
       const session = getStoredSession();
       if (!session) {
         setIsRestoringSession(false);
@@ -693,7 +791,7 @@ export default function App() {
             .order('name');
 
           if (allClientsData) {
-            setAllClients(allClientsData.filter(c => !INACTIVE_CLIENTS.includes(c.name)));
+            setAllClients(allClientsData.filter(isVisibleClient));
             setIsMasterAccount(true);
             setIsAuthenticated(true);
 
@@ -847,7 +945,7 @@ export default function App() {
       }
 
       // Filter out inactive clients from login
-      const activeClients = clients?.filter(c => !INACTIVE_CLIENTS.includes(c.name)) || [];
+      const activeClients = clients?.filter(isVisibleClient) || [];
 
       if (activeClients.length > 0) {
         // Check if this is the master account (Seam Media)
@@ -860,7 +958,7 @@ export default function App() {
             .order('name');
 
           if (allClientsData) {
-            setAllClients(allClientsData.filter(c => !INACTIVE_CLIENTS.includes(c.name)));
+            setAllClients(allClientsData.filter(isVisibleClient));
             setShowClientSelector(true);
           }
           // Save master session (no client selected yet)
@@ -912,6 +1010,7 @@ export default function App() {
       keywords: client.brand_keywords || []
     });
     setShowClientSelector(false);
+    setPortalSection('home');
     // Update session with selected client
     const session = getStoredSession();
     if (session) {
@@ -919,8 +1018,9 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     clearSession();
+    if (isSupabaseAuthSession) await supabase.auth.signOut();
     setIsAuthenticated(false);
     setCurrentClient(null);
     setIsMasterAccount(false);
@@ -930,6 +1030,8 @@ export default function App() {
     setBrandContext(null);
     setPosts([]);
     setPasswordInput('');
+    setPortalSection('home');
+    setIsSupabaseAuthSession(false);
   };
 
   const handleUpdatePost = useCallback(async (id: string, field: keyof Post, value: any) => {
@@ -954,6 +1056,25 @@ export default function App() {
 
     // Set new debounce timer - only update DB after user stops typing for 500ms
     debounceTimers.current[timerKey] = setTimeout(async () => {
+      if (field === 'notes' && currentClient && !isMasterAccount) {
+        try {
+          const { data } = await supabase.auth.getSession();
+          const token = data.session?.access_token;
+          const response = await fetch('/api/client-comment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+            body: JSON.stringify({ clientId: currentClient.id, postId: id, comment: value, pin: getStoredSession()?.pin || '' }),
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || 'Could not submit your feedback.');
+          setPosts((current) => current.map((post) => post.id === id ? { ...post, notes: value, status: 'Revision' } : post));
+        } catch (caught) {
+          setStorageError(caught instanceof Error ? caught.message : 'Could not submit your feedback.');
+          fetchPosts();
+        }
+        delete debounceTimers.current[timerKey];
+        return;
+      }
       // Database Update
       const updates = mapPostToDb({ [field]: value });
       const { error } = await supabase
@@ -1004,7 +1125,7 @@ export default function App() {
       // Clean up timer reference
       delete debounceTimers.current[timerKey];
     }, 500); // 500ms debounce delay
-  }, [posts, currentClient]);
+  }, [posts, currentClient, isMasterAccount]);
 
   const handleAutoPost = async (postId: string) => {
     if (!currentClient) return;
@@ -1064,6 +1185,7 @@ export default function App() {
         content,
         mediaUrls: allMediaUrls,
         mediaType: post.mediaType || 'image',
+        contentType: post.contentType || 'post',
         scheduledFor
       });
 
@@ -1325,6 +1447,7 @@ export default function App() {
             content,
             mediaUrls: allMediaUrls,
             mediaType: mediaType,
+            contentType: post.contentType || 'post',
             scheduledFor,
           });
 
@@ -1561,6 +1684,7 @@ export default function App() {
     if (post.mediaType) {
       insertData.media_type = post.mediaType;
     }
+    insertData.content_type = post.contentType || 'post';
 
     // Save to database
     const { error } = await supabase
@@ -1850,6 +1974,9 @@ export default function App() {
       status: postWithClient.status || 'Draft',
       image_description: postWithClient.imageDescription || '',
       image_url: postWithClient.imageUrl || '',
+      image_urls: postWithClient.imageUrls || [],
+      media_type: postWithClient.mediaType || 'image',
+      content_type: postWithClient.contentType || 'post',
       generated_caption: postWithClient.generatedCaption || '',
       generated_hashtags: postWithClient.generatedHashtags || [],
       notes: postWithClient.notes || '',
@@ -1978,20 +2105,21 @@ export default function App() {
     <div className="min-h-screen bg-[#F5F5F0] text-stone-800 font-sans flex flex-col">
       {/* Header */}
       <header className="bg-white border-b border-stone-200 sticky top-0 z-20 shadow-sm">
-        <div className="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="mx-auto flex h-16 max-w-[1800px] items-center justify-between gap-3 px-4 sm:px-6">
+          <div className="flex min-w-0 items-center gap-3">
             <div className="p-1.5 bg-brand-green rounded text-white">
               <Leaf className="w-5 h-5" />
             </div>
-            <h1 className="font-serif text-xl font-bold tracking-tight text-brand-dark">
-              {currentClient?.name || 'Light Dust'} <span className="font-sans font-normal text-stone-400 text-sm">Content Manager</span>
+            <h1 className="truncate font-serif text-lg font-bold tracking-tight text-brand-dark sm:text-xl">
+              {currentClient?.name || 'Light Dust'} <span className="hidden font-sans text-sm font-normal text-stone-400 sm:inline">Content Manager</span>
             </h1>
           </div>
           <div className="flex items-center gap-3">
+             {currentClient && <NotificationBell clientId={currentClient.id} pin={getStoredSession()?.pin || ''} onNavigate={setPortalSection} onUnreadChange={setNotificationUnread} />}
              {isMasterAccount && currentClient && (
                <button
                  onClick={handleOpenClientNotes}
-                 className="flex items-center gap-2 text-sm font-medium text-stone-600 hover:text-brand-green px-3 py-2 border border-stone-300 rounded-lg transition-colors"
+                 className="hidden xl:flex items-center gap-2 text-sm font-medium text-stone-600 hover:text-brand-green px-3 py-2 border border-stone-300 rounded-lg transition-colors"
                  title="View/edit client notes (agency only)"
                >
                  <FileText className="w-4 h-4" />
@@ -2001,36 +2129,36 @@ export default function App() {
              {(isMasterAccount || userClients.length > 1) && (
                <button
                  onClick={() => setShowClientSelector(true)}
-                 className="flex items-center gap-2 text-sm font-medium text-stone-600 hover:text-brand-green px-3 py-2 border border-stone-300 rounded-lg transition-colors"
+                 className="flex items-center gap-2 text-sm font-medium text-stone-600 hover:text-brand-green px-2 sm:px-3 py-2 border border-stone-300 rounded-lg transition-colors"
                >
                  <Users className="w-4 h-4" />
-                 Switch Client
+                 <span className="hidden sm:inline">Switch Client</span>
                </button>
              )}
              <button
                onClick={() => setShowMetaSettings(true)}
-               className="flex items-center gap-2 text-sm font-medium text-stone-600 hover:text-brand-green px-3 py-2 border border-stone-300 rounded-lg transition-colors"
+               className="hidden md:flex items-center gap-2 text-sm font-medium text-stone-600 hover:text-brand-green px-3 py-2 border border-stone-300 rounded-lg transition-colors"
                title="Meta Integration Settings"
              >
                <Settings className="w-4 h-4" />
              </button>
-             <button onClick={fetchPosts} className="text-stone-400 hover:text-brand-green p-2" title="Refresh Data">
+             <button onClick={fetchPosts} className="hidden text-stone-400 hover:text-brand-green p-2 md:block" title="Refresh Data">
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
              </button>
-             <button className="text-sm font-medium text-stone-500 hover:text-brand-dark px-3 py-2 transition-colors">
+             <button className="hidden text-sm font-medium text-stone-500 hover:text-brand-dark px-3 py-2 transition-colors xl:block">
                 Export to CSV
              </button>
              {isMasterAccount && (
                <button
                 onClick={() => setShowGeneratePostsModal(true)}
-                className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white px-4 py-2 rounded-md flex items-center gap-2 text-sm font-medium transition-all shadow-sm"
+                className="hidden bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white px-4 py-2 rounded-md items-center gap-2 text-sm font-medium transition-all shadow-sm xl:flex"
               >
                 <Sparkles className="w-4 h-4" /> Generate Posts
               </button>
              )}
              <button
               onClick={() => setIsEditorOpen(true)}
-              className="bg-brand-dark hover:bg-black text-white px-4 py-2 rounded-md flex items-center gap-2 text-sm font-medium transition-colors shadow-sm"
+              className="hidden bg-brand-dark hover:bg-black text-white px-4 py-2 rounded-md items-center gap-2 text-sm font-medium transition-colors shadow-sm md:flex"
             >
               <Plus className="w-4 h-4" /> Add Post
             </button>
@@ -2052,49 +2180,78 @@ export default function App() {
         </div>
       )}
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-x-auto p-6">
-        <div className="min-w-[1200px] max-w-[1600px] mx-auto">
-          {/* Main Tab Navigation (Agency Only) */}
-          {isMasterAccount && (
-            <div className="flex gap-1 mb-6 border-b border-stone-200">
-              <button
-                onClick={() => setMainTab('content')}
-                className={`flex items-center gap-2 px-4 py-3 font-medium text-sm transition-all border-b-2 -mb-[2px] ${
-                  mainTab === 'content'
-                    ? 'text-brand-dark border-brand-green'
-                    : 'text-stone-400 border-transparent hover:text-stone-600'
-                }`}
-              >
-                <Table2 className="w-4 h-4" />
-                Content Manager
-              </button>
-              <button
-                onClick={() => setMainTab('clients')}
-                className={`flex items-center gap-2 px-4 py-3 font-medium text-sm transition-all border-b-2 -mb-[2px] ${
-                  mainTab === 'clients'
-                    ? 'text-brand-dark border-brand-green'
-                    : 'text-stone-400 border-transparent hover:text-stone-600'
-                }`}
-              >
-                <LayoutGrid className="w-4 h-4" />
-                Client Management
-                <span className="w-2 h-2 bg-rose-500 rounded-full"></span>
-              </button>
-            </div>
-          )}
+      <div className="flex flex-1 items-stretch">
+        <ClientPortalSidebar
+          activeSection={portalSection}
+          clientName={currentClient?.name || 'Seam Media'}
+          collapsed={sidebarCollapsed}
+          hasMaxFeatures={hasMaxPortalFeatures}
+          hasSocialInbox={hasSocialInbox}
+          notificationUnread={notificationUnread}
+          isMasterAccount={isMasterAccount}
+          onNavigate={setPortalSection}
+          onToggle={() => setSidebarCollapsed((collapsed) => !collapsed)}
+          onLogout={handleLogout}
+        />
 
-          {/* Client Management View (Agency Only) */}
-          {isMasterAccount && mainTab === 'clients' ? (
-            <ClientManagement
-              clients={allClients}
-              onClientSelect={(client) => {
-                selectClient(client);
-                setMainTab('content');
+        {/* Compact navigation for phones and tablets */}
+        <nav aria-label="Client portal" className="fixed bottom-0 left-0 right-0 z-30 grid grid-cols-5 border-t border-stone-200 bg-white px-1 py-1.5 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] lg:hidden">
+          {([
+            ['home', 'Home'],
+            ['content', 'Calendar'],
+            ['account', 'Account'],
+            ['connections', 'Social'],
+            ['support', 'Support'],
+          ] as Array<[PortalSection, string]>).map(([section, label]) => (
+            <button key={section} type="button" onClick={() => setPortalSection(section)} className={`rounded-lg px-1 py-2 text-[11px] font-semibold ${portalSection === section ? 'bg-brand-green text-white' : 'text-stone-500'}`}>{label}</button>
+          ))}
+        </nav>
+
+        {/* Main Content */}
+        <main className={`min-w-0 flex-1 pb-16 lg:pb-0 ${portalSection === 'content' ? 'overflow-x-auto p-4 sm:p-6' : 'overflow-x-hidden'}`}>
+          {currentClient && portalSection === 'home' && <ClientHome client={currentClient} posts={posts} onNavigate={setPortalSection} />}
+          {currentClient && portalSection === 'account' && (
+            <ClientAccount
+              client={currentClient}
+              onSaved={(updatedClient) => {
+                setCurrentClient(updatedClient);
+                setBrandContext({
+                  name: updatedClient.brand_name,
+                  mission: updatedClient.brand_mission || '',
+                  tone: updatedClient.brand_tone || '',
+                  keywords: updatedClient.brand_keywords || [],
+                });
+                setAllClients((clients) => clients.map((client) => client.id === updatedClient.id ? updatedClient : client));
+                setUserClients((clients) => clients.map((client) => client.id === updatedClient.id ? updatedClient : client));
               }}
             />
-          ) : (
-          <>
+          )}
+          {currentClient && portalSection === 'connections' && <ClientConnections client={currentClient} pin={getStoredSession()?.pin || ''} />}
+          {currentClient && portalSection === 'billing' && <ClientBilling client={currentClient} pin={getStoredSession()?.pin || ''} />}
+          {currentClient && portalSection === 'notifications' && <ClientNotifications clientId={currentClient.id} pin={getStoredSession()?.pin || ''} onNavigate={setPortalSection} />}
+          {portalSection === 'analytics' && (hasMaxPortalFeatures && currentClient ? <ClientAnalytics posts={posts} clientId={currentClient.id} pin={getStoredSession()?.pin || ''} /> : <LockedPlanFeature name="Analytics" />)}
+          {portalSection === 'comments' && (hasMaxPortalFeatures ? (
+            <ClientComments
+              posts={posts}
+              onOpenCalendar={() => setPortalSection('content')}
+              onUpdateComment={(postId, comment) => handleUpdatePost(postId, 'notes', comment)}
+            />
+          ) : <LockedPlanFeature name="Comments" />)}
+          {portalSection === 'social-inbox' && (hasSocialInbox ? (
+            <ClientSocialInbox onConnectAccounts={() => setPortalSection('connections')} />
+          ) : <LockedPlanFeature name="Social Inbox" plan="Pro" description="Social Inbox is starting its rollout with Pro workspaces. It will bring messages, comments and mentions into one place." />)}
+          {currentClient && portalSection === 'support' && <ClientSupport client={currentClient} pin={getStoredSession()?.pin || ''} />}
+          {isMasterAccount && portalSection === 'clients' && (
+            <div className="mx-auto max-w-[1600px] p-6">
+              <ClientManagement clients={allClients} onClientSelect={selectClient} />
+            </div>
+          )}
+          {isMasterAccount && portalSection === 'leads' && (
+            <LeadManagement pin={getStoredSession()?.pin || ''} />
+          )}
+
+          {portalSection === 'content' && (
+          <div className="min-w-[1200px] max-w-[1600px] mx-auto">
           {/* Month Filter Tabs */}
           <div className="flex gap-2 mb-4 overflow-x-auto">
             {Array.from({ length: 6 }, (_, i) => {
@@ -2149,17 +2306,8 @@ export default function App() {
 
           {viewMode === 'table' ? (
             <>
-              {/* Action Buttons - positioned above table columns to match column widths */}
-              {/* Table columns: Date(w-32) | Creative(w-64) | Caption(flex) | Approval Status(w-48) | Additional Comments(w-64) */}
-              <div className="mb-2 flex items-center">
-                {/* Spacer for Date column */}
-                <div className="w-32 shrink-0"></div>
-                {/* Spacer for Creative column */}
-                <div className="w-64 shrink-0"></div>
-                {/* Spacer for Caption column (flex) */}
-                <div className="flex-1"></div>
-                {/* Approve All - above Approval Status column (w-48) */}
-                <div className="w-48 shrink-0 px-4">
+              <div className="mb-2 flex flex-wrap items-center justify-end gap-2">
+                <div>
                   <button
                     onClick={async () => {
                       if (confirm(`Approve all ${filteredPosts.length} posts in this month?`)) {
@@ -2175,8 +2323,48 @@ export default function App() {
                     Approve All
                   </button>
                 </div>
-                {/* Schedule Posts & Email Client Buttons - above Additional Comments column (w-64) */}
-                <div className="w-64 shrink-0 px-4 flex justify-end gap-2">
+
+                <details className="relative">
+                  <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 shadow-sm transition-all hover:bg-stone-50 [&::-webkit-details-marker]:hidden">
+                    <Columns3 className="h-4 w-4" />
+                    Columns
+                    <span className="rounded-full bg-stone-100 px-1.5 py-0.5 text-[10px] font-bold text-stone-500">
+                      {visibleTableColumnCount}/{TABLE_COLUMNS.length}
+                    </span>
+                  </summary>
+                  <div className="absolute right-0 z-30 mt-2 w-64 rounded-lg border border-stone-200 bg-white p-2 shadow-xl">
+                    <div className="px-2 pb-2 pt-1 text-xs font-bold uppercase tracking-wider text-stone-400">
+                      Show table columns
+                    </div>
+                    {TABLE_COLUMNS.map(({ key, label }) => (
+                      <label
+                        key={key}
+                        className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm text-stone-700 hover:bg-stone-50"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={visibleTableColumns[key]}
+                          disabled={visibleTableColumnCount === 1 && visibleTableColumns[key]}
+                          onChange={() => setVisibleTableColumns((current) => ({
+                            ...current,
+                            [key]: !current[key],
+                          }))}
+                          className="h-4 w-4 rounded border-stone-300 text-brand-green focus:ring-brand-green"
+                        />
+                        {label}
+                      </label>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setVisibleTableColumns(DEFAULT_VISIBLE_TABLE_COLUMNS)}
+                      className="mt-1 w-full rounded-md px-2 py-2 text-left text-xs font-semibold text-brand-green hover:bg-brand-green/5"
+                    >
+                      Show all columns
+                    </button>
+                  </div>
+                </details>
+
+                <div className="flex justify-end gap-2">
                   {isMasterAccount && currentClient && isLateConfigured() && (
                     <button
                       onClick={handleOpenScheduleModal}
@@ -2242,19 +2430,21 @@ Heath`
                 <table className="w-full text-left border-collapse">
                 <thead>
                     <tr className="bg-stone-50 border-b border-stone-300">
-                        <th className="sticky left-0 z-10 bg-stone-50 p-4 w-32 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Date</th>
-                        <th className="p-4 w-64 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Creative</th>
-                        <th className="p-4 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Caption & Hashtags</th>
-                        <th className="p-4 w-48 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Approval Status</th>
-                        <th className="p-4 w-64 text-xs font-bold text-stone-500 uppercase tracking-wider">Additional Comments</th>
+                        {visibleTableColumns.date && <th className="sticky left-0 z-10 bg-stone-50 p-4 w-32 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Date</th>}
+                        {visibleTableColumns.creative && <th className="p-4 w-64 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Creative</th>}
+                        {visibleTableColumns.caption && <th className="p-4 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Caption & Hashtags</th>}
+                        {visibleTableColumns.approval && <th className="p-4 w-48 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Approval Status</th>}
+                        {visibleTableColumns.contentIdeas && <th className="p-4 w-64 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Content Ideas</th>}
+                        {visibleTableColumns.comments && <th className="p-4 w-64 text-xs font-bold text-stone-500 uppercase tracking-wider">Additional Comments</th>}
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-200">
                     {loading && posts.length === 0 ? (
-                        <tr><td colSpan={5} className="p-8 text-center text-stone-400"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-2"/>Loading content...</td></tr>
+                        <tr><td colSpan={visibleTableColumnCount} className="p-8 text-center text-stone-400"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-2"/>Loading content...</td></tr>
                     ) : filteredPosts.map((post) => (
                         <tr key={post.id} className={`group hover:bg-stone-50/50 transition-colors ${post.status === 'Client Idea' ? 'bg-blue-50' : 'bg-white'}`}>
                             {/* Date Column */}
+                            {visibleTableColumns.date && (
                             <td className={`sticky left-0 z-10 p-4 align-top border-r border-stone-200 ${post.status === 'Client Idea' ? 'bg-blue-50 group-hover:bg-blue-100/70' : 'bg-white group-hover:bg-stone-50/50'}`}>
                                 <div className="flex flex-col gap-2">
                                     <input
@@ -2281,8 +2471,10 @@ Heath`
                                     </div>
                                 </div>
                             </td>
+                            )}
 
                             {/* Creative Column */}
+                            {visibleTableColumns.creative && (
                             <td className="p-4 align-top border-r border-stone-200">
                                 <div className="space-y-2">
                                     {/* Image Preview - Clickable to enlarge or view carousel */}
@@ -2409,6 +2601,29 @@ Heath`
                                       />
                                     )}
 
+                                    <div className="rounded-md border border-stone-200 bg-stone-50 p-2">
+                                      <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-stone-500">
+                                        Content Type
+                                      </label>
+                                      <select
+                                        aria-label={`Content type for ${post.title || post.date}`}
+                                        value={post.contentType || 'post'}
+                                        onChange={(e) => handleUpdatePost(post.id, 'contentType', e.target.value as ContentType)}
+                                        disabled={post.status === 'Posted'}
+                                        className="w-full rounded border border-stone-300 bg-white px-2 py-1.5 text-xs font-medium text-stone-700 outline-none focus:border-brand-green focus:ring-1 focus:ring-brand-green disabled:cursor-not-allowed disabled:opacity-60"
+                                      >
+                                        <option value="post">Post</option>
+                                        <option value="reel">Reel</option>
+                                        <option value="story">Story</option>
+                                      </select>
+                                      {post.contentType === 'reel' && post.mediaType !== 'video' && (
+                                        <p className="mt-1 text-[10px] leading-4 text-amber-700">Upload one video before scheduling.</p>
+                                      )}
+                                      {post.contentType === 'story' && (post.imageUrls?.length || 0) > 1 && (
+                                        <p className="mt-1 text-[10px] leading-4 text-amber-700">Stories support one image or video.</p>
+                                      )}
+                                    </div>
+
                                     {/* Upload Button - Always visible below image */}
                                     <label className="flex items-center justify-center gap-2 px-3 py-2 border border-stone-300 rounded-md cursor-pointer hover:bg-stone-50 hover:border-brand-green transition-colors text-xs font-medium text-stone-600 hover:text-brand-green">
                                         <input
@@ -2451,8 +2666,10 @@ Heath`
                                     )}
                                 </div>
                             </td>
+                            )}
 
                             {/* Caption Column */}
+                            {visibleTableColumns.caption && (
                             <td className="p-4 align-top border-r border-stone-200">
                                 <div className="h-full flex flex-col gap-3">
                                     <DebouncedTextarea
@@ -2508,8 +2725,10 @@ Heath`
                                     </div>
                                 </div>
                             </td>
+                            )}
 
                             {/* Approval Status Column */}
+                            {visibleTableColumns.approval && (
                             <td className="p-4 align-top border-r border-stone-200">
                                 <div className="space-y-4">
                                     <div className="relative">
@@ -2542,8 +2761,22 @@ Heath`
                                     )}
                                 </div>
                             </td>
+                            )}
+
+                            {/* Content Ideas Column */}
+                            {visibleTableColumns.contentIdeas && (
+                            <td className="p-4 align-top border-r border-stone-200">
+                                <DebouncedTextarea
+                                    value={post.title || ''}
+                                    onChange={(value) => handleUpdatePost(post.id, 'title', value)}
+                                    className="w-full h-32 p-3 text-sm border border-stone-200 rounded bg-blue-50/40 focus:bg-white focus:ring-1 focus:ring-blue-400 focus:border-blue-400 outline-none resize-none transition-colors"
+                                    placeholder="Add the content idea or post topic here..."
+                                />
+                            </td>
+                            )}
 
                             {/* Additional Comments Column */}
+                            {visibleTableColumns.comments && (
                             <td className="p-4 align-top">
                                 <div className="flex flex-col gap-2">
                                     <DebouncedTextarea
@@ -2574,12 +2807,13 @@ Heath`
                                     )}
                                 </div>
                             </td>
+                            )}
                         </tr>
                     ))}
                     
                     {/* Add New Row Stub */}
                     <tr className="bg-stone-50">
-                        <td colSpan={5} className="p-4 text-center border-t border-stone-300">
+                        <td colSpan={visibleTableColumnCount} className="p-4 text-center border-t border-stone-300">
                             <button 
                                 onClick={() => setIsEditorOpen(true)}
                                 className="text-stone-500 hover:text-brand-green font-medium text-sm flex items-center justify-center gap-2 w-full py-4 border-2 border-dashed border-stone-300 rounded hover:border-brand-green transition-all group"
@@ -2606,10 +2840,10 @@ Heath`
               }}
             />
           )}
-          </>
-          )}
         </div>
-      </main>
+        )}
+        </main>
+      </div>
 
       {isEditorOpen && brandContext && currentClient && (
         <PostEditor
@@ -2621,6 +2855,8 @@ Heath`
               status: 'Draft',
               imageDescription: '',
               imageUrl: '',
+              mediaType: 'image',
+              contentType: 'post',
           }}
           brand={brandContext}
           clientId={currentClient.id}
@@ -3233,7 +3469,7 @@ Example:
               ) : lateProfiles.length === 0 ? (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm">
                   <p className="text-amber-800 font-medium">No social profiles connected</p>
-                  <p className="text-amber-700 mt-1">Please connect your social media accounts at <a href="https://getlate.dev" target="_blank" rel="noopener noreferrer" className="underline">getlate.dev</a></p>
+                  <p className="text-amber-700 mt-1">Ask the client to connect their channels from Social accounts in their portal.</p>
                 </div>
               ) : (
                 <div className="space-y-2 max-h-48 overflow-y-auto border border-stone-200 rounded-lg p-2">
@@ -3333,6 +3569,7 @@ Example:
       {showGeneratePostsModal && currentClient && (
         <GeneratePostsModal
           client={currentClient}
+          pin={getStoredSession()?.pin || ''}
           onClose={() => setShowGeneratePostsModal(false)}
           onPostsGenerated={() => {
             // Refresh posts
