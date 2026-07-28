@@ -38,7 +38,6 @@ type LeadTab = 'overview' | 'leads' | 'performance';
 
 const LOST_STAGES: AgencyLeadStage[] = ['not_interested', 'no_response', 'not_qualified'];
 const WARM_STAGES: AgencyLeadStage[] = ['warm', 'interested', 'call_booked', 'proposal_sent'];
-const PAID_ACQUISITION_SOURCES = new Set(['meta_ads', 'google_ads', 'other']);
 const PAGE_SIZE = 25;
 const INITIAL_WINDOW_START = '2026-07-15';
 const INITIAL_WINDOW_END = '2026-08-15';
@@ -241,7 +240,7 @@ export function LeadManagement({ pin }: LeadManagementProps) {
       setMarketingForm(defaultMarketingPeriod(performanceWindow.start, performanceWindow.end));
       await fetchData();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'The ad statistics could not be saved.');
+      setError(caught instanceof Error ? caught.message : 'The acquisition statistics could not be saved.');
     } finally {
       setSaving(false);
     }
@@ -335,16 +334,12 @@ export function LeadManagement({ pin }: LeadManagementProps) {
   }, [leads, periods]);
   const weightedPipeline = activeLeads.reduce((sum, lead) => sum + Number(lead.monthly_value || 0) * (lead.conversion_probability / 100), 0);
   const totalLifetimeValue = convertedLeads.reduce((sum, lead) => sum + Number(lead.lifetime_value || 0), 0);
-  const overlappingPeriods = useMemo(() => periods.filter((period) => (
+  const windowPeriods = useMemo(() => periods.filter((period) => (
     period.period_start <= performanceWindow.end && period.period_end >= performanceWindow.start
   )), [performanceWindow.end, performanceWindow.start, periods]);
-  const paidWindowPeriods = useMemo(
-    () => overlappingPeriods.filter((period) => PAID_ACQUISITION_SOURCES.has(period.source)),
-    [overlappingPeriods],
-  );
   const windowCampaignPerformance = useMemo(() => {
     const grouped = new Map<string, CampaignPerformanceRow>();
-    paidWindowPeriods.forEach((period) => {
+    windowPeriods.forEach((period) => {
       if (!period.source_campaign) return;
       const platform = period.source_platform || '';
       const key = `${period.source}::${platform.toLowerCase()}::${period.source_campaign.toLowerCase()}`;
@@ -371,12 +366,12 @@ export function LeadManagement({ pin }: LeadManagementProps) {
       || b.initialRevenue - a.initialRevenue
       || a.campaign.localeCompare(b.campaign)
     ));
-  }, [paidWindowPeriods]);
-  const windowSpend = paidWindowPeriods.reduce((sum, period) => sum + Number(period.spend || 0), 0);
-  const windowLeads = paidWindowPeriods.reduce((sum, period) => sum + Number(period.leads || 0), 0);
-  const windowConversions = paidWindowPeriods.reduce((sum, period) => sum + Number(period.conversions || 0), 0);
-  const windowRevenue = paidWindowPeriods.reduce((sum, period) => sum + Number(period.conversion_revenue || 0), 0);
-  const windowLifetimeRevenue = paidWindowPeriods.reduce((sum, period) => sum + Number(period.lifetime_revenue || 0), 0);
+  }, [windowPeriods]);
+  const windowSpend = windowPeriods.reduce((sum, period) => sum + Number(period.spend || 0), 0);
+  const windowLeads = windowPeriods.reduce((sum, period) => sum + Number(period.leads || 0), 0);
+  const windowConversions = windowPeriods.reduce((sum, period) => sum + Number(period.conversions || 0), 0);
+  const windowRevenue = windowPeriods.reduce((sum, period) => sum + Number(period.conversion_revenue || 0), 0);
+  const windowLifetimeRevenue = windowPeriods.reduce((sum, period) => sum + Number(period.lifetime_revenue || 0), 0);
 
   const movePerformanceWindow = (amount: number) => {
     setPerformanceWindow((current) => ({
@@ -603,18 +598,18 @@ export function LeadManagement({ pin }: LeadManagementProps) {
           </section>
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <MetricCard label="Cost per lead" value={cost(windowSpend, windowLeads)} detail={`${windowLeads.toLocaleString()} tracked leads from ${money(windowSpend)} spend`} icon={DollarSign} />
-            <MetricCard label="Cost per conversion" value={cost(windowSpend, windowConversions)} detail={`${windowConversions.toLocaleString()} conversions attributed to paid activity`} icon={Target} tone="purple" />
-            <MetricCard label="Revenue ROAS" value={ratio(windowRevenue, windowSpend)} detail={`${money(windowRevenue)} initial conversion revenue`} icon={TrendingUp} tone="blue" />
+            <MetricCard label="Blended cost per lead" value={cost(windowSpend, windowLeads)} detail={`${windowLeads.toLocaleString()} paid and organic leads against ${money(windowSpend)} paid spend`} icon={DollarSign} />
+            <MetricCard label="Blended cost per conversion" value={cost(windowSpend, windowConversions)} detail={`${windowConversions.toLocaleString()} conversions across paid and organic activity`} icon={Target} tone="purple" />
+            <MetricCard label="Blended revenue ROAS" value={ratio(windowRevenue, windowSpend)} detail={`${money(windowRevenue)} initial revenue against paid spend`} icon={TrendingUp} tone="blue" />
             <MetricCard label="Lifetime ROAS" value={ratio(windowLifetimeRevenue, windowSpend)} detail={`${money(windowLifetimeRevenue)} customer lifetime revenue`} icon={BarChart3} tone="orange" />
           </div>
 
           <CampaignPerformanceTable rows={windowCampaignPerformance} />
 
           <section className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 px-5 py-4"><div><h2 className="font-serif text-lg font-bold text-brand-dark">Paid acquisition periods</h2><p className="mt-1 text-xs text-stone-500">Manually add Meta or Google totals for the selected reporting window.</p></div><button type="button" onClick={() => { setMarketingForm(defaultMarketingPeriod(performanceWindow.start, performanceWindow.end)); setMarketingOpen(true); }} className="flex items-center gap-2 rounded-lg bg-brand-green px-4 py-2 text-sm font-semibold text-white"><Plus className="h-4 w-4" /> Add ad stats</button></div>
-            <div className="overflow-x-auto"><table className="w-full min-w-[1200px] text-left"><thead><tr className="border-b border-stone-200 bg-stone-50 text-[11px] font-bold uppercase tracking-wider text-stone-500"><th className="px-4 py-3">Period</th><th className="px-4 py-3">Source</th><th className="px-4 py-3">Platform / campaign</th><th className="px-4 py-3 text-right">Spend</th><th className="px-4 py-3 text-right">Leads</th><th className="px-4 py-3 text-right">CPL</th><th className="px-4 py-3 text-right">Conversions</th><th className="px-4 py-3 text-right">CPA</th><th className="px-4 py-3 text-right">ROAS</th><th className="px-4 py-3 text-right">Lifetime ROAS</th><th className="px-4 py-3"></th></tr></thead><tbody className="divide-y divide-stone-100">{paidWindowPeriods.map((period) => <tr key={period.id} className="hover:bg-stone-50"><td className="px-4 py-3 text-sm font-semibold text-brand-dark">{new Date(`${period.period_start}T00:00:00`).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })} – {new Date(`${period.period_end}T00:00:00`).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}{period.is_estimate && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">Estimate</span>}</td><td className="px-4 py-3 text-sm text-stone-600">{sourceLabel(period.source)}</td><td className="max-w-[240px] px-4 py-3 text-xs text-stone-600"><div className="font-semibold text-brand-dark">{period.source_platform || 'Not recorded'}</div><div className="mt-0.5 truncate text-stone-500">{period.source_campaign || 'Unassigned campaign'}</div></td><td className="px-4 py-3 text-right text-sm">{money(Number(period.spend))}</td><td className="px-4 py-3 text-right text-sm">{period.leads}</td><td className="px-4 py-3 text-right text-sm font-semibold">{cost(Number(period.spend), period.leads)}</td><td className="px-4 py-3 text-right text-sm">{period.conversions}</td><td className="px-4 py-3 text-right text-sm font-semibold">{cost(Number(period.spend), period.conversions)}</td><td className="px-4 py-3 text-right text-sm font-semibold text-blue-700">{ratio(Number(period.conversion_revenue), Number(period.spend))}</td><td className="px-4 py-3 text-right text-sm font-semibold text-orange-700">{ratio(Number(period.lifetime_revenue), Number(period.spend))}</td><td className="px-4 py-3"><button type="button" onClick={() => { setMarketingForm(period); setMarketingOpen(true); }} className="rounded-lg p-2 text-stone-400 hover:bg-stone-100 hover:text-brand-dark" aria-label="Edit ad statistics"><Edit3 className="h-4 w-4" /></button></td></tr>)}</tbody></table></div>
-            {paidWindowPeriods.length === 0 && <div className="px-6 py-16 text-center"><Megaphone className="mx-auto h-9 w-9 text-stone-300" /><p className="mt-3 font-semibold text-brand-dark">No ad stats for this window</p><p className="mt-1 text-sm text-stone-500">Add your Meta or Google totals manually when they are ready.</p></div>}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 px-5 py-4"><div><h2 className="font-serif text-lg font-bold text-brand-dark">Acquisition periods</h2><p className="mt-1 text-xs text-stone-500">Combines paid campaign totals with organic acquisition results for the selected reporting window.</p></div><button type="button" onClick={() => { setMarketingForm(defaultMarketingPeriod(performanceWindow.start, performanceWindow.end)); setMarketingOpen(true); }} className="flex items-center gap-2 rounded-lg bg-brand-green px-4 py-2 text-sm font-semibold text-white"><Plus className="h-4 w-4" /> Add acquisition stats</button></div>
+            <div className="overflow-x-auto"><table className="w-full min-w-[1200px] text-left"><thead><tr className="border-b border-stone-200 bg-stone-50 text-[11px] font-bold uppercase tracking-wider text-stone-500"><th className="px-4 py-3">Period</th><th className="px-4 py-3">Source</th><th className="px-4 py-3">Platform / campaign</th><th className="px-4 py-3 text-right">Spend</th><th className="px-4 py-3 text-right">Leads</th><th className="px-4 py-3 text-right">CPL</th><th className="px-4 py-3 text-right">Conversions</th><th className="px-4 py-3 text-right">CPA</th><th className="px-4 py-3 text-right">ROAS</th><th className="px-4 py-3 text-right">Lifetime ROAS</th><th className="px-4 py-3"></th></tr></thead><tbody className="divide-y divide-stone-100">{windowPeriods.map((period) => <tr key={period.id} className="hover:bg-stone-50"><td className="px-4 py-3 text-sm font-semibold text-brand-dark">{new Date(`${period.period_start}T00:00:00`).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })} – {new Date(`${period.period_end}T00:00:00`).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}{period.is_estimate && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">Estimate</span>}</td><td className="px-4 py-3 text-sm text-stone-600">{sourceLabel(period.source)}</td><td className="max-w-[240px] px-4 py-3 text-xs text-stone-600"><div className="font-semibold text-brand-dark">{period.source_platform || 'Not recorded'}</div><div className="mt-0.5 truncate text-stone-500">{period.source_campaign || 'Unassigned campaign'}</div></td><td className="px-4 py-3 text-right text-sm">{money(Number(period.spend))}</td><td className="px-4 py-3 text-right text-sm">{period.leads}</td><td className="px-4 py-3 text-right text-sm font-semibold">{cost(Number(period.spend), period.leads)}</td><td className="px-4 py-3 text-right text-sm">{period.conversions}</td><td className="px-4 py-3 text-right text-sm font-semibold">{cost(Number(period.spend), period.conversions)}</td><td className="px-4 py-3 text-right text-sm font-semibold text-blue-700">{ratio(Number(period.conversion_revenue), Number(period.spend))}</td><td className="px-4 py-3 text-right text-sm font-semibold text-orange-700">{ratio(Number(period.lifetime_revenue), Number(period.spend))}</td><td className="px-4 py-3"><button type="button" onClick={() => { setMarketingForm(period); setMarketingOpen(true); }} className="rounded-lg p-2 text-stone-400 hover:bg-stone-100 hover:text-brand-dark" aria-label="Edit acquisition statistics"><Edit3 className="h-4 w-4" /></button></td></tr>)}</tbody></table></div>
+            {windowPeriods.length === 0 && <div className="px-6 py-16 text-center"><Megaphone className="mx-auto h-9 w-9 text-stone-300" /><p className="mt-3 font-semibold text-brand-dark">No acquisition stats for this window</p><p className="mt-1 text-sm text-stone-500">Add paid or organic acquisition totals when they are ready.</p></div>}
           </section>
         </div>
       )}
@@ -624,11 +619,11 @@ export function LeadManagement({ pin }: LeadManagementProps) {
       {marketingOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onMouseDown={() => setMarketingOpen(false)}>
           <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
-            <div className="flex items-center justify-between border-b border-stone-200 px-6 py-4"><div><h2 className="font-serif text-xl font-bold text-brand-dark">{marketingForm.id ? 'Edit ad statistics' : 'Add ad statistics'}</h2><p className="mt-1 text-sm text-stone-500">Use the totals shown in Meta Ads Manager or Google Ads.</p></div><button type="button" onClick={() => setMarketingOpen(false)} className="rounded-lg p-2 text-stone-400 hover:bg-stone-100" aria-label="Close"><X className="h-5 w-5" /></button></div>
+            <div className="flex items-center justify-between border-b border-stone-200 px-6 py-4"><div><h2 className="font-serif text-xl font-bold text-brand-dark">{marketingForm.id ? 'Edit acquisition statistics' : 'Add acquisition statistics'}</h2><p className="mt-1 text-sm text-stone-500">Enter totals for a paid campaign or an organic acquisition channel.</p></div><button type="button" onClick={() => setMarketingOpen(false)} className="rounded-lg p-2 text-stone-400 hover:bg-stone-100" aria-label="Close"><X className="h-5 w-5" /></button></div>
             <form onSubmit={saveMarketingPeriod} className="p-6"><div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               <label className="text-sm font-medium text-stone-700">Start date<input required type="date" value={marketingForm.period_start || ''} onChange={(event) => setMarketingForm((current) => ({ ...current, period_start: event.target.value }))} className="mt-1.5 w-full rounded-lg border border-stone-300 px-3 py-2.5" /></label>
               <label className="text-sm font-medium text-stone-700">End date<input required type="date" value={marketingForm.period_end || ''} onChange={(event) => setMarketingForm((current) => ({ ...current, period_end: event.target.value }))} className="mt-1.5 w-full rounded-lg border border-stone-300 px-3 py-2.5" /></label>
-              <label className="text-sm font-medium text-stone-700">Source<select value={marketingForm.source || 'meta_ads'} onChange={(event) => setMarketingForm((current) => ({ ...current, source: event.target.value }))} className="mt-1.5 w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5">{LEAD_SOURCES.filter((source) => ['meta_ads', 'google_ads', 'other'].includes(source.value)).map((source) => <option key={source.value} value={source.value}>{source.label}</option>)}</select></label>
+              <label className="text-sm font-medium text-stone-700">Source<select value={marketingForm.source || 'meta_ads'} onChange={(event) => setMarketingForm((current) => ({ ...current, source: event.target.value }))} className="mt-1.5 w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5">{LEAD_SOURCES.map((source) => <option key={source.value} value={source.value}>{source.label}</option>)}</select></label>
               <label className="text-sm font-medium text-stone-700">Platform<input value={marketingForm.source_platform || ''} onChange={(event) => setMarketingForm((current) => ({ ...current, source_platform: event.target.value }))} placeholder="e.g. Instagram" className="mt-1.5 w-full rounded-lg border border-stone-300 px-3 py-2.5" /></label>
               <label className="text-sm font-medium text-stone-700 sm:col-span-2">Campaign<input value={marketingForm.source_campaign || ''} onChange={(event) => setMarketingForm((current) => ({ ...current, source_campaign: event.target.value }))} placeholder="Exact campaign label" className="mt-1.5 w-full rounded-lg border border-stone-300 px-3 py-2.5" /></label>
               {([['spend', 'Ad spend ($)'], ['impressions', 'Impressions'], ['clicks', 'Clicks'], ['leads', 'Leads'], ['conversions', 'Conversions'], ['conversion_revenue', 'Initial revenue ($)'], ['lifetime_revenue', 'Lifetime revenue ($)']] as Array<[keyof AgencyMarketingPeriod, string]>).map(([key, label]) => <label key={key} className="text-sm font-medium text-stone-700">{label}<input required type="number" min="0" step={key.includes('revenue') || key === 'spend' ? '0.01' : '1'} value={Number(marketingForm[key] || 0)} onChange={(event) => setMarketingForm((current) => ({ ...current, [key]: Number(event.target.value) }))} className="mt-1.5 w-full rounded-lg border border-stone-300 px-3 py-2.5" /></label>)}
