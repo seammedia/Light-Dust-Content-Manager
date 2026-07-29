@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { SupabaseClient, User } from '@supabase/supabase-js';
+import { ensureZernioProfile } from './zernioProfiles.js';
 
 type BillingCycle = 'monthly' | 'annual';
 
@@ -229,6 +230,7 @@ export async function provisionPaidSocialClient(
   }
 
   await linkAgencyLead(db, client.id, email);
+  await ensureZernioProfile(db, client);
   return { recovered: true as const, client };
 }
 

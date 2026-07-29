@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { authenticatePortalRequest, cleanText } from './portal.js';
+import { ensureZernioProfile } from './zernioProfiles.js';
 
 const ZERNIO_API_BASE = 'https://zernio.com/api/v1';
 const SUPPORTED_PLATFORMS = new Set([
@@ -93,28 +94,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const action = cleanText(req.body?.action, 30);
-    if (action !== 'connect') return res.status(400).json({ error: 'Unknown social connection action.' });
+    if (action !== 'connect' && action !== 'ensure-profile') {
+      return res.status(400).json({ error: 'Unknown social connection action.' });
+    }
+    const profileId = await ensureZernioProfile(db, client);
+    if (action === 'ensure-profile') return res.status(200).json({ profileId });
+
     const platform = cleanText(req.body?.platform, 40).toLowerCase();
     if (!SUPPORTED_PLATFORMS.has(platform)) return res.status(400).json({ error: 'That social platform is not supported.' });
-
-    let profileId = client.zernio_profile_id;
-    if (!profileId) {
-      const created = await zernioRequest<{ profile?: { _id?: string } }>('/profiles', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: client.name,
-          description: `Seam Media client profile for ${client.name}`,
-          color: '#4F6B47',
-        }),
-      });
-      profileId = created.profile?._id;
-      if (!profileId) throw new Error('Zernio created the profile but returned no profile ID.');
-      const { error: profileError } = await db
-        .from('clients')
-        .update({ zernio_profile_id: profileId, updated_at: new Date().toISOString() })
-        .eq('id', client.id);
-      if (profileError) throw profileError;
-    }
 
     const redirectUrl = new URL('/', requestOrigin(req));
     redirectUrl.searchParams.set('social_connected', '1');

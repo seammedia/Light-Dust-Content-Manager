@@ -129,11 +129,27 @@ export function SelfServeOnboarding() {
         secondary_font: form.secondaryFont.trim() || null,
         logo_url: logoUrl,
         onboarding_answers: onboardingAnswers,
-        provisioning_status: 'active',
-        onboarding_completed_at: new Date().toISOString(),
       }).eq('owner_user_id', userId).select('*').single();
 
       if (updateError || !data) throw new Error(updateError?.message || 'Could not save your details.');
+      const session = await getAuthSession();
+      if (!session) throw new Error('Please sign in again to finish setting up your workspace.');
+      const profileResponse = await fetch('/api/social-connections', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ clientId: data.id, action: 'ensure-profile' }),
+      });
+      const profileResult = await profileResponse.json();
+      if (!profileResponse.ok) throw new Error(profileResult.error || 'Could not prepare your social publishing profile.');
+
+      const { error: activationError } = await supabase.from('clients').update({
+        provisioning_status: 'active',
+        onboarding_completed_at: new Date().toISOString(),
+      }).eq('owner_user_id', userId);
+      if (activationError) throw new Error(activationError.message || 'Could not finish activating your workspace.');
       window.location.replace('/');
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not save your details.');
