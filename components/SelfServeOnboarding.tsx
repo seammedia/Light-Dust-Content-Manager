@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Check, Leaf, Loader2, Upload } from 'lucide-react';
 import { Client } from '../types';
 import { getAuthSession } from '../services/authClient';
+import { recoverPaidOnboarding } from '../services/onboardingRecovery';
 import { supabase } from '../services/supabaseClient';
 import { uploadImage } from '../services/storageService';
 
@@ -24,6 +25,7 @@ export function SelfServeOnboarding() {
     let cancelled = false;
     let timer: number | undefined;
     let attempts = 0;
+    let recoveryAttempted = false;
     const load = async () => {
       const session = await getAuthSession();
       if (!session?.user) { window.location.replace('/signup'); return; }
@@ -32,9 +34,25 @@ export function SelfServeOnboarding() {
       const { data } = await supabase.from('clients').select('*').eq('owner_user_id', session.user.id).maybeSingle();
       if (cancelled) return;
       if (!data) {
+        if (!recoveryAttempted) {
+          recoveryAttempted = true;
+          try {
+            const result = await recoverPaidOnboarding(session);
+            if (result.recovered && !cancelled) {
+              timer = window.setTimeout(load, 250);
+              return;
+            }
+          } catch (recoveryError) {
+            if (!cancelled) {
+              setWaiting(false);
+              setError(recoveryError instanceof Error ? recoveryError.message : 'Your portal could not be prepared.');
+            }
+            return;
+          }
+        }
         attempts += 1;
         if (attempts < 30) timer = window.setTimeout(load, 1500);
-        else { setWaiting(false); setError('Your payment is complete, but your portal is taking longer than expected to prepare. Please refresh this page in a moment.'); }
+        else { setWaiting(false); setError('We could not confirm a paid subscription for this email. Please sign in with the same email used at checkout or contact Seam Media.'); }
         return;
       }
       if (data.provisioning_status === 'active') { window.location.replace('/'); return; }

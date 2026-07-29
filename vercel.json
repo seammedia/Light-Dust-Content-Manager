@@ -4,6 +4,7 @@
     { "source": "/api/agency-leads", "destination": "/api/support-ticket?mode=agency-leads" },
     { "source": "/api/social-connections", "destination": "/api/late-profiles?mode=social-connections" },
     { "source": "/api/revenue-sync", "destination": "/api/billing-portal?mode=revenue-sync" },
+    { "source": "/api/onboarding-recovery", "destination": "/api/billing-portal?mode=onboarding-recovery" },
     { "source": "/signup", "destination": "/index.html" },
     { "source": "/login", "destination": "/index.html" },
     { "source": "/onboarding", "destination": "/index.html" },

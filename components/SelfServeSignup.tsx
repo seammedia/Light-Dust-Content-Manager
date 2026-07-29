@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Check, Leaf, Loader2 } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import { getAuthSession, signInWithEmail, signInWithGoogle, signUpWithEmail } from '../services/authClient';
+import { recoverPaidOnboarding } from '../services/onboardingRecovery';
 
 type Plan = 'basic' | 'pro' | 'max';
 type Billing = 'monthly' | 'annual';
@@ -9,6 +10,20 @@ type Billing = 'monthly' | 'annual';
 const PLAN_STORAGE_KEY = 'seam_signup_plan';
 const BILLING_STORAGE_KEY = 'seam_signup_billing';
 const AUTH_MODE_STORAGE_KEY = 'seam_auth_mode';
+
+async function findOrRecoverClient(session: Awaited<ReturnType<typeof getAuthSession>>) {
+  if (!session?.user) return null;
+  const { data: existing, error } = await supabase
+    .from('clients')
+    .select('provisioning_status, subscription_status')
+    .eq('owner_user_id', session.user.id)
+    .maybeSingle();
+  if (error) throw error;
+  if (existing) return existing;
+
+  const result = await recoverPaidOnboarding(session);
+  return result.recovered ? result.client : null;
+}
 
 const PACKAGES: Record<Plan, { name: string; monthly: number; annual: number; features: string[]; links: Record<Billing, string> }> = {
   basic: {
@@ -83,11 +98,12 @@ export function SelfServeSignup() {
       setUserId(session.user.id);
       setSessionEmail(session.user.email || '');
 
-      const { data: client } = await supabase
-        .from('clients')
-        .select('provisioning_status, subscription_status')
-        .eq('owner_user_id', session.user.id)
-        .maybeSingle();
+      let client;
+      try {
+        client = await findOrRecoverClient(session);
+      } catch (recoveryError) {
+        if (!cancelled) setError(recoveryError instanceof Error ? recoveryError.message : 'Your portal could not be prepared.');
+      }
       if (cancelled) return;
       if (client?.provisioning_status === 'pending_intake') {
         window.location.replace('/onboarding');
@@ -112,14 +128,10 @@ export function SelfServeSignup() {
       if (result.error) { setError(result.error.message); return; }
       if (result.data.session?.user) {
         const authenticatedUser = result.data.session.user;
+        const client = await findOrRecoverClient(result.data.session);
+        if (client?.provisioning_status === 'pending_intake') { window.location.replace('/onboarding'); return; }
+        if (client?.provisioning_status === 'active' && client.subscription_status !== 'cancelled') { window.location.replace('/'); return; }
         if (mode === 'signin') {
-          const { data: client } = await supabase
-            .from('clients')
-            .select('provisioning_status, subscription_status')
-            .eq('owner_user_id', authenticatedUser.id)
-            .maybeSingle();
-          if (client?.provisioning_status === 'pending_intake') { window.location.replace('/onboarding'); return; }
-          if (client?.provisioning_status === 'active' && client.subscription_status !== 'cancelled') { window.location.replace('/'); return; }
           setNoPortal(true);
         } else {
           setUserId(authenticatedUser.id);
@@ -128,6 +140,8 @@ export function SelfServeSignup() {
       } else if (mode === 'signup') {
         setConfirmEmail(true);
       }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Your portal could not be prepared.');
     } finally {
       setSubmitting(false);
     }
