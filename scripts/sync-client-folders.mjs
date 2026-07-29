@@ -114,8 +114,10 @@ for (const entry of folderEntries) {
   if (clientId) foldersByClientId.set(clientId, entry.name);
 }
 const results = [];
+const missingZernioProfiles = [];
 
 for (const client of clients || []) {
+  if (!client.zernio_profile_id) missingZernioProfiles.push({ id: client.id, client: client.brand_name || client.name });
   const displayName = client.brand_name || client.name;
   const matchingFolder = foldersByClientId.get(client.id)
     || foldersByKey.get(folderKey(displayName))
@@ -144,4 +146,5 @@ for (const client of clients || []) {
   results.push({ client: displayName, folder: folderPath, actions });
 }
 
-console.log(JSON.stringify({ dryRun, matchedClients: results.length, results }, null, 2));
+console.log(JSON.stringify({ dryRun, matchedClients: results.length, missingZernioProfiles, results }, null, 2));
+if (missingZernioProfiles.length) process.exitCode = 2;
