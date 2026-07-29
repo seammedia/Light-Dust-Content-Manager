@@ -205,7 +205,7 @@ export function SelfServeSignup() {
                 <p className="text-sm text-stone-500">Signed in as</p>
                 <p className="mt-1 font-semibold text-brand-dark">{sessionEmail}</p>
                 <h2 className="mt-7 font-serif text-2xl text-brand-dark">Ready for secure checkout</h2>
-                <p className="mt-2 text-sm leading-6 text-stone-500">Stripe will securely collect your payment details. After checkout, you’ll complete a short brand setup and your dashboard will open immediately.</p>
+                <p className="mt-2 text-sm leading-6 text-stone-500">Stripe will securely collect your business name and payment details. Your workspace, publishing profile and client folder will all use the business name you enter.</p>
                 <button type="button" onClick={beginCheckout} className="mt-7 w-full rounded-xl bg-brand-green px-5 py-3 font-semibold text-white shadow hover:brightness-95">Continue to secure checkout</button>
                 <button type="button" onClick={() => supabase.auth.signOut().then(() => window.location.reload())} className="mt-3 text-sm text-stone-400 underline">Use a different account</button>
               </div>

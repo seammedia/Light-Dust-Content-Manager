@@ -13,6 +13,8 @@ type StripeCustomer = {
   id: string;
   email?: string | null;
   name?: string | null;
+  business_name?: string | null;
+  individual_name?: string | null;
   created?: number;
 };
 
@@ -37,6 +39,14 @@ type StripeCheckoutSession = {
   subscription?: string | null;
   status?: string | null;
   payment_status?: string | null;
+  collected_information?: {
+    business_name?: string | null;
+    individual_name?: string | null;
+  } | null;
+  customer_details?: {
+    business_name?: string | null;
+    individual_name?: string | null;
+  } | null;
 };
 
 type StripeList<T> = {
@@ -48,6 +58,8 @@ export type PaidSocialSubscription = {
   subscription: StripeSubscription;
   checkoutSessionId: string | null;
   socialPackage: SocialPackage;
+  businessName: string | null;
+  contactName: string | null;
 };
 
 const SOCIAL_PACKAGE_BY_AMOUNT: Record<number, SocialPackage> = {
@@ -113,6 +125,14 @@ async function activeSocialSubscription(customer: StripeCustomer): Promise<PaidS
     subscription: eligible.subscription,
     checkoutSessionId: checkoutSession?.id || null,
     socialPackage: eligible.socialPackage,
+    businessName: checkoutSession?.customer_details?.business_name?.trim()
+      || checkoutSession?.collected_information?.business_name?.trim()
+      || customer.business_name?.trim()
+      || null,
+    contactName: checkoutSession?.customer_details?.individual_name?.trim()
+      || checkoutSession?.collected_information?.individual_name?.trim()
+      || customer.individual_name?.trim()
+      || null,
   };
 }
 
@@ -178,10 +198,12 @@ export async function provisionPaidSocialClient(
   }
 
   const existing = ownerClient || stripeClient;
-  const customerName = verifiedPayment.customer.name?.trim()
+  const businessName = verifiedPayment.businessName?.trim();
+  if (!businessName) throw new Error('A business name is required before this client can be provisioned.');
+
+  const contactName = verifiedPayment.contactName?.trim()
     || String(user.user_metadata?.full_name || user.user_metadata?.name || '').trim()
-    || email.split('@')[0]
-    || 'New Seam Media client';
+    || null;
   const now = new Date().toISOString();
   const paymentFields = {
     owner_user_id: user.id,
@@ -202,9 +224,11 @@ export async function provisionPaidSocialClient(
       .from('clients')
       .update({
         ...paymentFields,
+        name: businessName,
+        brand_name: businessName,
         provisioning_status: existing.provisioning_status === 'active' ? 'active' : 'pending_intake',
         contact_email: existing.contact_email || email,
-        contact_name: existing.contact_name || customerName,
+        contact_name: existing.contact_name || contactName,
       })
       .eq('id', existing.id)
       .select('*')
@@ -217,9 +241,9 @@ export async function provisionPaidSocialClient(
       .insert({
         ...paymentFields,
         pin: randomUUID(),
-        name: customerName,
-        brand_name: customerName,
-        contact_name: customerName,
+        name: businessName,
+        brand_name: businessName,
+        contact_name: contactName,
         contact_email: email,
         provisioning_status: 'pending_intake',
       })

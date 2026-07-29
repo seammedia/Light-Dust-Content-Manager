@@ -6,6 +6,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  renameSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
@@ -115,6 +116,7 @@ for (const entry of folderEntries) {
 }
 const results = [];
 const missingZernioProfiles = [];
+const folderNameConflicts = [];
 
 for (const client of clients || []) {
   if (!client.zernio_profile_id) missingZernioProfiles.push({ id: client.id, client: client.brand_name || client.name });
@@ -122,10 +124,24 @@ for (const client of clients || []) {
   const matchingFolder = foldersByClientId.get(client.id)
     || foldersByKey.get(folderKey(displayName))
     || foldersByKey.get(folderKey(client.name));
-  const folderName = matchingFolder || slugify(displayName);
+  const desiredFolderName = slugify(displayName);
+  let folderName = matchingFolder || desiredFolderName;
+  const actions = [];
+
+  if (matchingFolder && folderKey(matchingFolder) !== folderKey(desiredFolderName)) {
+    const currentPath = join(root, matchingFolder);
+    const desiredPath = join(root, desiredFolderName);
+    if (existsSync(desiredPath)) {
+      folderNameConflicts.push({ id: client.id, client: displayName, currentPath, desiredPath });
+    } else {
+      actions.push(`rename ${currentPath} to ${desiredPath}`);
+      if (!dryRun) renameSync(currentPath, desiredPath);
+      folderName = desiredFolderName;
+    }
+  }
+
   const folderPath = join(root, folderName);
   const readmePath = join(folderPath, 'README.md');
-  const actions = [];
 
   if (!matchingFolder) actions.push(`create ${folderPath}`);
   if (!existsSync(readmePath) && !existsSync(join(folderPath, 'readme.md'))) actions.push(`create ${readmePath}`);
@@ -146,5 +162,11 @@ for (const client of clients || []) {
   results.push({ client: displayName, folder: folderPath, actions });
 }
 
-console.log(JSON.stringify({ dryRun, matchedClients: results.length, missingZernioProfiles, results }, null, 2));
-if (missingZernioProfiles.length) process.exitCode = 2;
+console.log(JSON.stringify({
+  dryRun,
+  matchedClients: results.length,
+  missingZernioProfiles,
+  folderNameConflicts,
+  results,
+}, null, 2));
+if (missingZernioProfiles.length || folderNameConflicts.length) process.exitCode = 2;
