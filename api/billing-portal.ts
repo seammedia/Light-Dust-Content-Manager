@@ -20,6 +20,9 @@ async function onboardingRecoveryHandler(req: VercelRequest, res: VercelResponse
     if (bearer && !cronAuthorised) {
       const { data, error } = await db.auth.getUser(bearer);
       if (error || !data.user) return res.status(401).json({ error: 'Please sign in again.' });
+      if (!process.env.STRIPE_SECRET_KEY) {
+        return res.status(200).json({ recovered: false, reason: 'RECOVERY_UNAVAILABLE' });
+      }
       const result = await provisionPaidSocialClient(db, data.user);
       return res.status(200).json(result);
     }
@@ -30,6 +33,7 @@ async function onboardingRecoveryHandler(req: VercelRequest, res: VercelResponse
     const { data: master } = await db.from('clients').select('pin').eq('name', 'Seam Media').maybeSingle();
     if (!cronAuthorised && (!pin || pin !== master?.pin)) return res.status(401).json({ error: 'Agency access is required.' });
     if (!email) return res.status(400).json({ error: 'A customer email is required.' });
+    if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: 'Stripe recovery is not configured.' });
 
     const paidSubscription = await findPaidSocialSubscription(email);
     if (!paidSubscription) return res.status(404).json({ error: 'No active paid Seam Media social subscription was found for that email.' });

@@ -2,7 +2,7 @@ import type { Session } from '@supabase/supabase-js';
 
 export type OnboardingRecoveryResult =
   | { recovered: true; client: Record<string, unknown> }
-  | { recovered: false; reason: 'NO_PAID_SUBSCRIPTION' };
+  | { recovered: false; reason: 'NO_PAID_SUBSCRIPTION' | 'RECOVERY_UNAVAILABLE' };
 
 export async function recoverPaidOnboarding(session: Session): Promise<OnboardingRecoveryResult> {
   const response = await fetch('/api/onboarding-recovery', {
