@@ -16,7 +16,8 @@ async function onboardingRecoveryHandler(req: VercelRequest, res: VercelResponse
   const db = createClient(supabaseUrl, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
   try {
     const bearer = String(req.headers.authorization || '').match(/^Bearer\s+(.+)$/i)?.[1];
-    if (bearer) {
+    const cronAuthorised = Boolean(process.env.CRON_SECRET && bearer === process.env.CRON_SECRET);
+    if (bearer && !cronAuthorised) {
       const { data, error } = await db.auth.getUser(bearer);
       if (error || !data.user) return res.status(401).json({ error: 'Please sign in again.' });
       const result = await provisionPaidSocialClient(db, data.user);
@@ -27,7 +28,7 @@ async function onboardingRecoveryHandler(req: VercelRequest, res: VercelResponse
     const email = String(req.body?.email || '').trim().toLowerCase();
     const inviteIfMissing = req.body?.inviteIfMissing === true;
     const { data: master } = await db.from('clients').select('pin').eq('name', 'Seam Media').maybeSingle();
-    if (!pin || pin !== master?.pin) return res.status(401).json({ error: 'Agency access is required.' });
+    if (!cronAuthorised && (!pin || pin !== master?.pin)) return res.status(401).json({ error: 'Agency access is required.' });
     if (!email) return res.status(400).json({ error: 'A customer email is required.' });
 
     const paidSubscription = await findPaidSocialSubscription(email);
