@@ -9,6 +9,7 @@ import {
   Instagram,
   Loader2,
   MessageCircle,
+  RefreshCw,
   Save,
   Send,
   Sparkles,
@@ -59,6 +60,7 @@ export function OutreachStudio({ pin, drafts, onChanged }: OutreachStudioProps) 
   const [message, setMessage] = useState('');
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [regeneratingGraphic, setRegeneratingGraphic] = useState(false);
   const [markingSent, setMarkingSent] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
@@ -153,6 +155,20 @@ export function OutreachStudio({ pin, drafts, onChanged }: OutreachStudioProps) 
     }
   };
 
+  const regenerateGraphic = async () => {
+    if (!selectedDraft) return;
+    setRegeneratingGraphic(true);
+    setError('');
+    try {
+      await request('regenerateOutreachGraphic', { id: selectedDraft.id });
+      await onChanged();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'The Reel cover could not be regenerated.');
+    } finally {
+      setRegeneratingGraphic(false);
+    }
+  };
+
   return (
     <div className="mt-6 space-y-5">
       <section className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
@@ -163,7 +179,7 @@ export function OutreachStudio({ pin, drafts, onChanged }: OutreachStudioProps) 
               <div>
                 <h2 className="font-serif text-xl font-bold text-brand-dark">Instagram Outreach Studio</h2>
                 <p className="mt-1 max-w-2xl text-sm leading-6 text-stone-600">
-                  Add the details you can see on a new follower's profile. The studio prepares a tailored graphic and friendly first message for you to review and send manually.
+                  Add the details you can see on a new follower's profile. The studio prepares a bold vertical Reel cover and friendly first message for you to review and send manually.
                 </p>
               </div>
             </div>
@@ -207,8 +223,8 @@ export function OutreachStudio({ pin, drafts, onChanged }: OutreachStudioProps) 
               <textarea required rows={3} value={form.profile_notes} onChange={(event) => updateForm('profile_notes', event.target.value)} placeholder="Paste or summarise their bio, services, recent posts, visual style and anything specific worth mentioning." className="mt-1.5 w-full resize-y rounded-lg border border-stone-300 px-3 py-2.5 outline-none focus:border-brand-green focus:ring-2 focus:ring-brand-green/20" />
             </label>
             <label className="text-sm font-semibold text-stone-700 md:col-span-2 xl:col-span-4">
-              Graphic direction <span className="font-normal text-stone-400">(optional)</span>
-              <input value={form.graphic_direction} onChange={(event) => updateForm('graphic_direction', event.target.value)} placeholder="e.g. A polished promo tile for their spring offer, premium and minimal" className="mt-1.5 w-full rounded-lg border border-stone-300 px-3 py-2.5 outline-none focus:border-brand-green focus:ring-2 focus:ring-brand-green/20" />
+              Reel cover direction <span className="font-normal text-stone-400">(optional)</span>
+              <input value={form.graphic_direction} onChange={(event) => updateForm('graphic_direction', event.target.value)} placeholder="e.g. Bold premium joinery cover, craftsmanship close-up, high contrast" className="mt-1.5 w-full rounded-lg border border-stone-300 px-3 py-2.5 outline-none focus:border-brand-green focus:ring-2 focus:ring-brand-green/20" />
             </label>
           </div>
 
@@ -216,7 +232,7 @@ export function OutreachStudio({ pin, drafts, onChanged }: OutreachStudioProps) 
             <p className="text-xs leading-5 text-stone-500">Nothing is sent to Instagram. You stay in control of the final message and attachment.</p>
             <button type="submit" disabled={generating} className="flex items-center gap-2 rounded-lg bg-brand-green px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-800 disabled:opacity-50">
               {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              {generating ? 'Creating graphic and message…' : 'Create outreach draft'}
+              {generating ? 'Creating Reel cover and message…' : 'Create outreach draft'}
             </button>
           </div>
         </form>
@@ -278,17 +294,23 @@ export function OutreachStudio({ pin, drafts, onChanged }: OutreachStudioProps) 
               <div className="grid lg:grid-cols-2">
                 <div className="border-b border-stone-200 p-5 lg:border-b-0 lg:border-r">
                   <div className="mb-3 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 text-sm font-bold text-brand-dark"><ImageIcon className="h-4 w-4 text-brand-green" /> Custom graphic</div>
-                    {selectedDraft.graphic_url && (
-                      <a href={selectedDraft.graphic_url} download={`${selectedDraft.instagram_username}-outreach.png`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-semibold text-brand-green hover:text-emerald-800"><Download className="h-3.5 w-3.5" /> Download</a>
-                    )}
+                    <div className="flex items-center gap-2 text-sm font-bold text-brand-dark"><ImageIcon className="h-4 w-4 text-brand-green" /> Custom Reel cover</div>
+                    <div className="flex items-center gap-3">
+                      <button type="button" onClick={regenerateGraphic} disabled={regeneratingGraphic} className="flex items-center gap-1.5 text-xs font-semibold text-brand-green hover:text-emerald-800 disabled:opacity-50">
+                        {regeneratingGraphic ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                        {regeneratingGraphic ? 'Regenerating…' : 'Regenerate'}
+                      </button>
+                      {selectedDraft.graphic_url && (
+                        <a href={selectedDraft.graphic_url} download={`${selectedDraft.instagram_username}-reel-cover.png`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-semibold text-brand-green hover:text-emerald-800"><Download className="h-3.5 w-3.5" /> Download</a>
+                      )}
+                    </div>
                   </div>
                   {selectedDraft.graphic_url ? (
-                    <img loading="lazy" src={selectedDraft.graphic_url} alt={`Custom outreach concept for ${selectedDraft.business_name}`} className="aspect-square w-full rounded-xl border border-stone-200 object-cover" />
+                    <img loading="lazy" src={selectedDraft.graphic_url} alt={`Custom Reel cover concept for ${selectedDraft.business_name}`} className="mx-auto max-h-[680px] w-auto max-w-full rounded-xl border border-stone-200 bg-stone-100 object-contain" />
                   ) : (
-                    <div className="flex aspect-square items-center justify-center rounded-xl bg-stone-100 text-sm text-stone-400">Graphic unavailable</div>
+                    <div className="mx-auto flex aspect-[9/16] max-h-[680px] items-center justify-center rounded-xl bg-stone-100 text-sm text-stone-400">Reel cover unavailable</div>
                   )}
-                  {selectedDraft.graphic_headline && <p className="mt-3 text-xs leading-5 text-stone-500"><span className="font-semibold text-stone-700">Concept:</span> {selectedDraft.graphic_headline}</p>}
+                  {selectedDraft.graphic_headline && <p className="mt-3 text-xs leading-5 text-stone-500"><span className="font-semibold text-stone-700">Hook:</span> {selectedDraft.graphic_headline}</p>}
                 </div>
 
                 <div className="flex flex-col p-5">

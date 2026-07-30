@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { authenticatePortalRequest, cleanText, kickPortalAutomation } from '../server/portal.js';
 import { agencyLeadsHandler } from '../server/agencyLeads.js';
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 function serverClient() {
   const url = process.env.VITE_SUPABASE_URL;

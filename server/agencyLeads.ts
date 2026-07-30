@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
+import sharp from 'sharp';
 import { cleanText, portalDb } from './portal.js';
 
 const LOST_STAGES = new Set(['not_interested', 'no_response', 'not_qualified']);
@@ -64,7 +65,7 @@ Rules:
 - Never use em dashes or en dashes.
 - The message is a first DM to a business that has recently followed Seam Media.
 - Mention one specific, credible detail from the supplied profile notes.
-- Explain that Heath made a quick example graphic for their business.
+- Explain that Heath made a quick example Reel cover for their business.
 - Do not pretend to have researched anything beyond the supplied details.
 - Keep the message between 65 and 105 words in 2 or 3 short paragraphs.
 - Use the contact's first name in a casual greeting when provided.
@@ -84,7 +85,7 @@ Rules:
     },
   });
 
-  const result = await model.generateContent(`Create an outreach message and square social graphic concept using only these details:
+  const result = await model.generateContent(`Create an outreach message and vertical Instagram Reel cover concept using only these details:
 
 Contact: ${contactName || 'Not provided'}
 Business: ${businessName}
@@ -94,7 +95,9 @@ Profile notes: ${profileNotes}
 Seam Media offer: ${offerFocus}
 Requested graphic direction: ${graphicDirection || 'Choose a polished concept that suits the business'}
 
-For graphic_prompt, describe a premium 1:1 Instagram concept. Include the business name and a short, useful headline, but do not invent a logo, pricing, claims, contact details or an offer that was not supplied. The graphic must look like a real social post concept, not an advertisement for Seam Media.`);
+For graphic_headline, write one bold hook of 3 to 7 words. It must be grounded in the supplied notes, mobile-readable and suitable for oversized uppercase lettering. Do not include the business name unless it is essential to the hook.
+
+For graphic_prompt, describe only the topic-relevant subject, scene and visual story for a premium vertical Reel cover. Do not request extra visible copy. Do not invent a person, logo, pricing, claim, contact detail or offer. The cover must communicate its subject within one second and look like a real high-performing social thumbnail, not an advertisement for Seam Media.`);
   const parsed = JSON.parse(result.response.text()) as {
     message: string;
     graphic_headline: string;
@@ -111,39 +114,126 @@ For graphic_prompt, describe a premium 1:1 Instagram concept. Include the busine
 async function generateAndStoreOutreachGraphic(
   db: ReturnType<typeof portalDb>,
   username: string,
-  prompt: string,
+  input: {
+    businessName: string;
+    headline: string;
+    industry: string;
+    location: string;
+    visualDirection: string;
+  },
 ) {
   const apiKey = process.env.OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY;
   if (!apiKey) throw new Error('OPENAI_NOT_CONFIGURED');
 
-  const response = await fetch('https://api.openai.com/v1/images/generations', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'gpt-image-2',
-      prompt: `${prompt}
+  const headline = input.headline.toUpperCase();
+  const productionPrompt = `Use case: ads-marketing
+Asset type: vertical Instagram Reel cover, 9:16
+Primary request: Create one bold, credible Reel cover concept for ${input.businessName}.
+Input images: No identity or style reference supplied. Do not invent a recognisable business owner or copy another creator's branding.
+Subject: ${input.industry || 'The business service described by the visual direction'} shown through a strong topic-relevant scene or object.
+Scene/backdrop: ${input.visualDirection}
+Composition/framing: One dominant subject or visual story, strong depth, generous separation for the headline, and all important content kept inside the central crop-safe area. Keep text clear of faces, eyes and mouths.
+Style: bold professional social-media thumbnail, energetic and credible, not a quiet static brand tile.
+Colour palette: high contrast and suited to the business category, with one bright accent colour on a key headline word.
+Text (verbatim): "${headline}"
+Typography: oversized condensed uppercase lettering, very high contrast, dark stroke or dimensional shadow, readable instantly at phone thumbnail size.
+Localisation: Australian spelling, architecture, currency, terminology and visual cues${input.location ? ` appropriate to ${input.location}` : ''}.
+Constraints: exact headline spelling; headline is the only visible text; final composition must survive Reel UI and profile-grid crops; no unsupported claims.
+Avoid: business-name lockup, extra text, duplicate words, invented logo, watermark, Instagram interface, captions, clutter, tiny type, foreign-market cues, distorted people or hands.`;
 
-Create a polished, professional square Instagram graphic at 1:1. Keep all visible text concise and correctly spelled. Use strong layout hierarchy, generous spacing and commercially realistic art direction. Do not include Seam Media branding, watermarks or invented logos.`,
-      size: '1024x1024',
-      quality: 'medium',
-      n: 1,
-    }),
-  });
-  if (!response.ok) {
-    const details = await response.text();
-    console.error('Outreach graphic generation failed:', response.status, details.slice(0, 1000));
-    throw new Error('GRAPHIC_GENERATION_FAILED');
+  const generateCover = async (prompt: string) => {
+    const response = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-image-2',
+        prompt,
+        size: '1024x1536',
+        quality: 'medium',
+        n: 1,
+      }),
+    });
+    if (!response.ok) {
+      const details = await response.text();
+      console.error('Outreach Reel cover generation failed:', response.status, details.slice(0, 1000));
+      throw new Error('GRAPHIC_GENERATION_FAILED');
+    }
+
+    const result = await response.json() as { data?: Array<{ b64_json?: string }> };
+    const base64 = result.data?.[0]?.b64_json;
+    if (!base64) throw new Error('GRAPHIC_GENERATION_FAILED');
+
+    return sharp(Buffer.from(base64, 'base64'))
+      .resize(1080, 1920, { fit: 'cover', position: 'centre' })
+      .png()
+      .toBuffer();
+  };
+
+  const inspectCover = async (image: Buffer) => {
+    const geminiApiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+    if (!geminiApiKey) throw new Error('GEMINI_NOT_CONFIGURED');
+    const genAI = new GoogleGenerativeAI(geminiApiKey);
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-3.6-flash',
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: SchemaType.OBJECT,
+          properties: {
+            passed: { type: SchemaType.BOOLEAN },
+            text_accurate: { type: SchemaType.BOOLEAN },
+            issues: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+          },
+          required: ['passed', 'text_accurate', 'issues'],
+        },
+      },
+    });
+    const result = await model.generateContent([
+      { inlineData: { data: image.toString('base64'), mimeType: 'image/png' } },
+      { text: `Quality-check this vertical Instagram Reel cover.
+
+Expected headline, verbatim: "${headline}"
+
+Pass only when:
+- the expected headline is exact, complete and readable at phone thumbnail size
+- the cover communicates the business topic within one second
+- all important content is inside the central crop-safe area
+- text does not cover a person's eyes or mouth
+- there is no extra text, duplicate wording, invented logo, watermark or platform interface
+- the layout is bold, credible and high contrast rather than cluttered or gimmicky
+- visual and spelling cues suit an Australian business
+
+Return concise, actionable issues for a targeted regeneration.` },
+    ]);
+    return JSON.parse(result.response.text()) as {
+      passed: boolean;
+      text_accurate: boolean;
+      issues: string[];
+    };
+  };
+
+  let image = await generateCover(productionPrompt);
+  let inspection = await inspectCover(image);
+  if (!inspection.passed) {
+    const correction = inspection.issues.length
+      ? inspection.issues.join('; ')
+      : 'Improve headline accuracy, mobile legibility and central crop safety.';
+    image = await generateCover(`${productionPrompt}
+
+TARGETED CORRECTION: ${correction}
+Keep the exact headline "${headline}" and change only what is needed to fix these issues.`);
+    inspection = await inspectCover(image);
+  }
+  if (!inspection.passed || !inspection.text_accurate) {
+    console.error('Outreach Reel cover failed quality check:', inspection.issues);
+    throw new Error('REEL_COVER_QA_FAILED');
   }
 
-  const result = await response.json() as { data?: Array<{ b64_json?: string }> };
-  const base64 = result.data?.[0]?.b64_json;
-  if (!base64) throw new Error('GRAPHIC_GENERATION_FAILED');
-
   const storagePath = `outreach/instagram/${safeStorageSegment(username)}/${Date.now()}-${randomUUID()}.png`;
-  const { error } = await db.storage.from('post-images').upload(storagePath, Buffer.from(base64, 'base64'), {
+  const { error } = await db.storage.from('post-images').upload(storagePath, image, {
     cacheControl: '31536000',
     contentType: 'image/png',
     upsert: false,
@@ -297,7 +387,13 @@ export async function agencyLeadsHandler(req: VercelRequest, res: VercelResponse
       }
 
       const generated = await generateOutreachCopy({ ...input, business_name: businessName, profile_notes: profileNotes });
-      const graphicUrl = await generateAndStoreOutreachGraphic(db, instagramUsername, generated.graphic_prompt);
+      const graphicUrl = await generateAndStoreOutreachGraphic(db, instagramUsername, {
+        businessName,
+        headline: generated.graphic_headline,
+        industry: cleanText(input.industry, 160),
+        location: cleanText(input.location, 160),
+        visualDirection: generated.graphic_prompt,
+      });
       const payload = {
         instagram_username: instagramUsername,
         contact_name: nullableText(input.contact_name, 120),
@@ -314,6 +410,31 @@ export async function agencyLeadsHandler(req: VercelRequest, res: VercelResponse
         status: 'ready',
       };
       const { data: draft, error } = await db.from('agency_outreach_drafts').insert(payload).select('*').single();
+      if (error) throw error;
+      return res.status(200).json({ draft });
+    }
+
+    if (action === 'regenerateOutreachGraphic') {
+      const id = cleanText(req.body?.id, 80);
+      if (!id) return res.status(400).json({ error: 'An outreach draft is required.' });
+      const { data: existing, error: existingError } = await db.from('agency_outreach_drafts').select('*').eq('id', id).maybeSingle();
+      if (existingError) throw existingError;
+      if (!existing) return res.status(404).json({ error: 'That outreach draft could not be found.' });
+
+      const generated = await generateOutreachCopy(existing as Record<string, unknown>);
+      const graphicUrl = await generateAndStoreOutreachGraphic(db, existing.instagram_username, {
+        businessName: existing.business_name,
+        headline: generated.graphic_headline,
+        industry: existing.industry || '',
+        location: existing.location || '',
+        visualDirection: generated.graphic_prompt,
+      });
+      const { data: draft, error } = await db.from('agency_outreach_drafts').update({
+        graphic_headline: generated.graphic_headline,
+        graphic_prompt: generated.graphic_prompt,
+        graphic_url: graphicUrl,
+        updated_at: new Date().toISOString(),
+      }).eq('id', id).select('*').single();
       if (error) throw error;
       return res.status(200).json({ draft });
     }
@@ -449,6 +570,7 @@ export async function agencyLeadsHandler(req: VercelRequest, res: VercelResponse
     if (error instanceof Error && error.message === 'OPENAI_NOT_CONFIGURED') return res.status(503).json({ error: 'OpenAI is not configured for outreach graphic generation.' });
     if (error instanceof Error && error.message === 'GRAPHIC_GENERATION_FAILED') return res.status(502).json({ error: 'The custom graphic could not be generated. Please try again.' });
     if (error instanceof Error && error.message === 'GRAPHIC_UPLOAD_FAILED') return res.status(502).json({ error: 'The custom graphic was created but could not be saved. Please try again.' });
+    if (error instanceof Error && error.message === 'REEL_COVER_QA_FAILED') return res.status(502).json({ error: 'The Reel cover did not pass its text and mobile-readability check. Please regenerate it.' });
     console.error('Agency lead management failed:', error);
     return res.status(500).json({ error: 'Lead management could not be updated. Please try again.' });
   }
