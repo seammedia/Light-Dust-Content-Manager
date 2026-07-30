@@ -22,6 +22,10 @@
     {
       "path": "/api/revenue-sync",
       "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/client-analytics-report-run",
+      "schedule": "0 * * * *"
     }
   ]
 }

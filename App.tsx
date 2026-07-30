@@ -12,6 +12,7 @@ import { ClientConnections } from './components/ClientConnections';
 import { ClientBilling } from './components/ClientBilling';
 import { ClientSupport } from './components/ClientSupport';
 import { ClientAnalytics } from './components/ClientAnalytics';
+import { ClientAnalyticsEmailSettings } from './components/ClientAnalyticsEmailSettings';
 import { ClientComments } from './components/ClientComments';
 import { NotificationBell } from './components/NotificationBell';
 import { ClientNotifications } from './components/ClientNotifications';
@@ -2245,6 +2246,9 @@ export default function App() {
             <div className="mx-auto max-w-[1600px] p-6">
               <ClientManagement clients={allClients} onClientSelect={selectClient} />
             </div>
+          )}
+          {isMasterAccount && portalSection === 'reports' && (
+            <ClientAnalyticsEmailSettings pin={getStoredSession()?.pin || ''} />
           )}
           {isMasterAccount && portalSection === 'leads' && (
             <LeadManagement pin={getStoredSession()?.pin || ''} />

@@ -9,6 +9,7 @@ import {
   LockKeyhole,
   LogOut,
   MessageSquareText,
+  MailCheck,
   Inbox,
   PanelLeftClose,
   PanelLeftOpen,
@@ -17,7 +18,7 @@ import {
   Users,
 } from 'lucide-react';
 
-export type PortalSection = 'home' | 'notifications' | 'content' | 'account' | 'connections' | 'billing' | 'analytics' | 'comments' | 'social-inbox' | 'support' | 'clients' | 'leads';
+export type PortalSection = 'home' | 'notifications' | 'content' | 'account' | 'connections' | 'billing' | 'analytics' | 'comments' | 'social-inbox' | 'support' | 'clients' | 'reports' | 'leads';
 
 interface ClientPortalSidebarProps {
   activeSection: PortalSection;
@@ -144,6 +145,21 @@ export function ClientPortalSidebar({
               >
                 <Handshake className="h-5 w-5 shrink-0" />
                 {!collapsed && <span>Lead management</span>}
+              </button>
+              <button
+                type="button"
+                onClick={() => onNavigate('reports')}
+                title={collapsed ? 'Analytics emails' : undefined}
+                className={`flex h-11 w-full items-center rounded-lg text-sm font-medium transition-colors ${
+                  collapsed ? 'justify-center' : 'gap-3 px-3'
+                } ${
+                  activeSection === 'reports'
+                    ? 'bg-brand-green text-white shadow-sm'
+                    : 'text-stone-600 hover:bg-stone-100 hover:text-brand-dark'
+                }`}
+              >
+                <MailCheck className="h-5 w-5 shrink-0" />
+                {!collapsed && <span>Analytics emails</span>}
               </button>
             </>
           )}
