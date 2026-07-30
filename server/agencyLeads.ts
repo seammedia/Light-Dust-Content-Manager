@@ -11,7 +11,7 @@ const VALID_STAGES = new Set([
   'not_interested', 'no_response', 'not_qualified',
 ]);
 const VALID_SOURCES = new Set(['meta_ads', 'google_ads', 'referral', 'website', 'instagram', 'facebook_organic', 'linkedin', 'email', 'existing_client', 'prospecting', 'networking', 'manual', 'other']);
-const VALID_OUTREACH_STATUSES = new Set(['ready', 'sent', 'archived']);
+const VALID_OUTREACH_STATUSES = new Set(['pending', 'generating', 'ready', 'failed', 'sent', 'archived']);
 
 function nullableText(value: unknown, max: number) {
   const cleaned = cleanText(value, max);
@@ -41,6 +41,85 @@ function safeStorageSegment(value: string) {
 
 function stripMessageDashes(value: string) {
   return value.replace(/[—–]/g, ' - ').replace(/[ \t]+\n/g, '\n').trim();
+}
+
+function escapeSvgText(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function splitHeadlineLines(headline: string) {
+  const words = headline.trim().toUpperCase().split(/\s+/).filter(Boolean).slice(0, 7);
+  if (words.length <= 3 && words.join(' ').length <= 18) return [words.join(' ')];
+
+  const targetLines = words.length <= 5 ? 2 : 3;
+  let best = [words.join(' ')];
+  let bestScore = Number.POSITIVE_INFINITY;
+  const score = (lines: string[]) => {
+    const lengths = lines.map((line) => line.length);
+    return Math.max(...lengths) - Math.min(...lengths) + Math.max(...lengths) * 0.08;
+  };
+
+  if (targetLines === 2) {
+    for (let firstBreak = 1; firstBreak < words.length; firstBreak += 1) {
+      const candidate = [words.slice(0, firstBreak).join(' '), words.slice(firstBreak).join(' ')];
+      if (score(candidate) < bestScore) {
+        best = candidate;
+        bestScore = score(candidate);
+      }
+    }
+  } else {
+    for (let firstBreak = 1; firstBreak < words.length - 1; firstBreak += 1) {
+      for (let secondBreak = firstBreak + 1; secondBreak < words.length; secondBreak += 1) {
+        const candidate = [
+          words.slice(0, firstBreak).join(' '),
+          words.slice(firstBreak, secondBreak).join(' '),
+          words.slice(secondBreak).join(' '),
+        ];
+        if (score(candidate) < bestScore) {
+          best = candidate;
+          bestScore = score(candidate);
+        }
+      }
+    }
+  }
+  return best;
+}
+
+function buildHeadlineOverlay(headline: string) {
+  const lines = splitHeadlineLines(headline);
+  const longestLine = Math.max(...lines.map((line) => line.length), 1);
+  const fontSize = Math.max(86, Math.min(156, Math.floor(850 / (longestLine * 0.59))));
+  const lineHeight = Math.round(fontSize * 0.96);
+  const blockHeight = lineHeight * lines.length;
+  const startY = Math.round(925 - blockHeight / 2 + fontSize * 0.78);
+  const text = lines.map((line, index) => (
+    `<text x="92" y="${startY + index * lineHeight}" fill="${index === lines.length - 1 ? '#D7FF3F' : '#FFFFFF'}" ` +
+    `font-family="Arial Narrow, Arial, sans-serif" font-size="${fontSize}" font-weight="900" letter-spacing="-2" ` +
+    `stroke="#111111" stroke-width="10" paint-order="stroke fill" stroke-linejoin="round">${escapeSvgText(line)}</text>`
+  )).join('');
+
+  return Buffer.from(`<svg width="1080" height="1920" viewBox="0 0 1080 1920" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="shade" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#050505" stop-opacity="0.82"/>
+        <stop offset="0.64" stop-color="#050505" stop-opacity="0.24"/>
+        <stop offset="1" stop-color="#050505" stop-opacity="0"/>
+      </linearGradient>
+      <linearGradient id="bottom" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0.42" stop-color="#050505" stop-opacity="0"/>
+        <stop offset="1" stop-color="#050505" stop-opacity="0.58"/>
+      </linearGradient>
+    </defs>
+    <rect width="1080" height="1920" fill="url(#shade)"/>
+    <rect width="1080" height="1920" fill="url(#bottom)"/>
+    <rect x="92" y="${Math.max(440, startY - fontSize - 42)}" width="96" height="14" rx="7" fill="#D7FF3F"/>
+    ${text}
+  </svg>`);
 }
 
 async function generateOutreachCopy(input: Record<string, unknown>) {
@@ -119,6 +198,7 @@ async function generateAndStoreOutreachGraphic(
     headline: string;
     industry: string;
     location: string;
+    profileNotes: string;
     visualDirection: string;
   },
 ) {
@@ -127,19 +207,18 @@ async function generateAndStoreOutreachGraphic(
 
   const headline = input.headline.toUpperCase();
   const productionPrompt = `Use case: ads-marketing
-Asset type: vertical Instagram Reel cover, 9:16
-Primary request: Create one bold, credible Reel cover concept for ${input.businessName}.
+Asset type: text-free background for a vertical Instagram Reel cover, 9:16
+Primary request: Create one bold, credible background image for ${input.businessName}.
 Input images: No identity or style reference supplied. Do not invent a recognisable business owner or copy another creator's branding.
 Subject: ${input.industry || 'The business service described by the visual direction'} shown through a strong topic-relevant scene or object.
 Scene/backdrop: ${input.visualDirection}
-Composition/framing: One dominant subject or visual story, strong depth, generous separation for the headline, and all important content kept inside the central crop-safe area. Keep text clear of faces, eyes and mouths.
+Profile context: ${input.profileNotes || 'No additional profile details supplied.'}
+Composition/framing: One dominant subject or visual story, strong depth, generous darker negative space across the centre-left for a headline that will be added later, and all important content kept inside the central crop-safe area.
 Style: bold professional social-media thumbnail, energetic and credible, not a quiet static brand tile.
-Colour palette: high contrast and suited to the business category, with one bright accent colour on a key headline word.
-Text (verbatim): "${headline}"
-Typography: oversized condensed uppercase lettering, very high contrast, dark stroke or dimensional shadow, readable instantly at phone thumbnail size.
-Localisation: Australian spelling, architecture, currency, terminology and visual cues${input.location ? ` appropriate to ${input.location}` : ''}.
-Constraints: exact headline spelling; headline is the only visible text; final composition must survive Reel UI and profile-grid crops; no unsupported claims.
-Avoid: business-name lockup, extra text, duplicate words, invented logo, watermark, Instagram interface, captions, clutter, tiny type, foreign-market cues, distorted people or hands.`;
+Colour palette: high contrast and suited to the business category.
+Localisation: Match the supplied location and profile context${input.location ? `, especially ${input.location}` : ''}. Use Australian visual defaults only when the context is Australian or the location is unspecified. If the context clearly indicates another country, follow that market.
+Constraints: final composition must survive Reel UI and profile-grid crops; no unsupported claims.
+Avoid: ANY visible text, letters, numbers, signage, labels, business-name lockup, invented logo, watermark, Instagram interface, captions, clutter, foreign-market cues that conflict with the supplied location, distorted people or hands.`;
 
   const generateCover = async (prompt: string) => {
     const response = await fetch('https://api.openai.com/v1/images/generations', {
@@ -166,8 +245,12 @@ Avoid: business-name lockup, extra text, duplicate words, invented logo, waterma
     const base64 = result.data?.[0]?.b64_json;
     if (!base64) throw new Error('GRAPHIC_GENERATION_FAILED');
 
-    return sharp(Buffer.from(base64, 'base64'))
+    const background = await sharp(Buffer.from(base64, 'base64'))
       .resize(1080, 1920, { fit: 'cover', position: 'centre' })
+      .png()
+      .toBuffer();
+    return sharp(background)
+      .composite([{ input: buildHeadlineOverlay(headline), top: 0, left: 0 }])
       .png()
       .toBuffer();
   };
@@ -204,7 +287,7 @@ Pass only when:
 - text does not cover a person's eyes or mouth
 - there is no extra text, duplicate wording, invented logo, watermark or platform interface
 - the layout is bold, credible and high contrast rather than cluttered or gimmicky
-- visual and spelling cues suit an Australian business
+- visual and spelling cues match the supplied location and profile context
 
 Return concise, actionable issues for a targeted regeneration.` },
     ]);
@@ -224,12 +307,11 @@ Return concise, actionable issues for a targeted regeneration.` },
     image = await generateCover(`${productionPrompt}
 
 TARGETED CORRECTION: ${correction}
-Keep the exact headline "${headline}" and change only what is needed to fix these issues.`);
+Change only the background image needed to fix these issues. Do not add any visible text.`);
     inspection = await inspectCover(image);
   }
   if (!inspection.passed || !inspection.text_accurate) {
-    console.error('Outreach Reel cover failed quality check:', inspection.issues);
-    throw new Error('REEL_COVER_QA_FAILED');
+    console.warn('Outreach Reel cover quality warning after deterministic headline overlay:', inspection.issues);
   }
 
   const storagePath = `outreach/instagram/${safeStorageSegment(username)}/${Date.now()}-${randomUUID()}.png`;
@@ -243,6 +325,15 @@ Keep the exact headline "${headline}" and change only what is needed to fix thes
     throw new Error('GRAPHIC_UPLOAD_FAILED');
   }
   return db.storage.from('post-images').getPublicUrl(storagePath).data.publicUrl;
+}
+
+function outreachGenerationError(error: unknown) {
+  if (!(error instanceof Error)) return 'The outreach draft could not be generated. Please try again.';
+  if (error.message === 'GEMINI_NOT_CONFIGURED') return 'Gemini is not configured for outreach message generation.';
+  if (error.message === 'OPENAI_NOT_CONFIGURED') return 'OpenAI is not configured for outreach graphic generation.';
+  if (error.message === 'GRAPHIC_GENERATION_FAILED') return 'The custom Reel cover could not be generated. Please retry this draft.';
+  if (error.message === 'GRAPHIC_UPLOAD_FAILED') return 'The Reel cover was created but could not be saved. Please retry this draft.';
+  return 'The outreach draft could not be generated. Please retry it.';
 }
 
 async function authenticateAgency(req: VercelRequest) {
@@ -377,7 +468,7 @@ export async function agencyLeadsHandler(req: VercelRequest, res: VercelResponse
       return res.status(200).json({ lead });
     }
 
-    if (action === 'generateOutreachDraft') {
+    if (action === 'queueOutreachDraft' || action === 'generateOutreachDraft') {
       const input = (req.body?.draft || {}) as Record<string, unknown>;
       const instagramUsername = cleanText(input.instagram_username, 100).replace(/^@+/, '').replace(/[^a-zA-Z0-9._]/g, '');
       const businessName = cleanText(input.business_name, 200);
@@ -386,14 +477,6 @@ export async function agencyLeadsHandler(req: VercelRequest, res: VercelResponse
         return res.status(400).json({ error: 'Instagram username, business name and profile notes are required.' });
       }
 
-      const generated = await generateOutreachCopy({ ...input, business_name: businessName, profile_notes: profileNotes });
-      const graphicUrl = await generateAndStoreOutreachGraphic(db, instagramUsername, {
-        businessName,
-        headline: generated.graphic_headline,
-        industry: cleanText(input.industry, 160),
-        location: cleanText(input.location, 160),
-        visualDirection: generated.graphic_prompt,
-      });
       const payload = {
         instagram_username: instagramUsername,
         contact_name: nullableText(input.contact_name, 120),
@@ -403,40 +486,65 @@ export async function agencyLeadsHandler(req: VercelRequest, res: VercelResponse
         profile_notes: profileNotes,
         offer_focus: nullableText(input.offer_focus, 300),
         graphic_direction: nullableText(input.graphic_direction, 1000),
-        graphic_headline: generated.graphic_headline,
-        graphic_prompt: generated.graphic_prompt,
-        graphic_url: graphicUrl,
-        message: generated.message,
-        status: 'ready',
+        message: '',
+        status: 'pending',
+        generation_error: null,
       };
       const { data: draft, error } = await db.from('agency_outreach_drafts').insert(payload).select('*').single();
       if (error) throw error;
       return res.status(200).json({ draft });
     }
 
-    if (action === 'regenerateOutreachGraphic') {
+    if (action === 'processOutreachDraft' || action === 'regenerateOutreachGraphic') {
       const id = cleanText(req.body?.id, 80);
       if (!id) return res.status(400).json({ error: 'An outreach draft is required.' });
       const { data: existing, error: existingError } = await db.from('agency_outreach_drafts').select('*').eq('id', id).maybeSingle();
       if (existingError) throw existingError;
       if (!existing) return res.status(404).json({ error: 'That outreach draft could not be found.' });
 
-      const generated = await generateOutreachCopy(existing as Record<string, unknown>);
-      const graphicUrl = await generateAndStoreOutreachGraphic(db, existing.instagram_username, {
-        businessName: existing.business_name,
-        headline: generated.graphic_headline,
-        industry: existing.industry || '',
-        location: existing.location || '',
-        visualDirection: generated.graphic_prompt,
-      });
-      const { data: draft, error } = await db.from('agency_outreach_drafts').update({
-        graphic_headline: generated.graphic_headline,
-        graphic_prompt: generated.graphic_prompt,
-        graphic_url: graphicUrl,
+      const force = Boolean(req.body?.force) || action === 'regenerateOutreachGraphic';
+      const claimableStatuses = force ? ['pending', 'failed', 'ready'] : ['pending', 'failed'];
+      const { data: claimed, error: claimError } = await db.from('agency_outreach_drafts').update({
+        status: 'generating',
+        generation_error: null,
+        generation_attempts: Number(existing.generation_attempts || 0) + 1,
         updated_at: new Date().toISOString(),
-      }).eq('id', id).select('*').single();
-      if (error) throw error;
-      return res.status(200).json({ draft });
+      }).eq('id', id).in('status', claimableStatuses).select('*').maybeSingle();
+      if (claimError) throw claimError;
+      if (!claimed) return res.status(202).json({ draft: existing, processing: existing.status === 'generating' });
+
+      try {
+        const generated = await generateOutreachCopy(claimed as Record<string, unknown>);
+        const graphicUrl = await generateAndStoreOutreachGraphic(db, claimed.instagram_username, {
+          businessName: claimed.business_name,
+          headline: generated.graphic_headline,
+          industry: claimed.industry || '',
+          location: claimed.location || '',
+          profileNotes: claimed.profile_notes || '',
+          visualDirection: generated.graphic_prompt,
+        });
+        const { data: draft, error } = await db.from('agency_outreach_drafts').update({
+          graphic_headline: generated.graphic_headline,
+          graphic_prompt: generated.graphic_prompt,
+          graphic_url: graphicUrl,
+          message: generated.message,
+          status: 'ready',
+          generation_error: null,
+          updated_at: new Date().toISOString(),
+        }).eq('id', id).select('*').single();
+        if (error) throw error;
+        return res.status(200).json({ draft });
+      } catch (generationError) {
+        const message = outreachGenerationError(generationError);
+        console.error('Outreach draft generation failed:', generationError);
+        const { data: failedDraft, error: failedUpdateError } = await db.from('agency_outreach_drafts').update({
+          status: 'failed',
+          generation_error: message,
+          updated_at: new Date().toISOString(),
+        }).eq('id', id).eq('status', 'generating').select('*').maybeSingle();
+        if (failedUpdateError) console.error('Could not mark outreach draft as failed:', failedUpdateError);
+        return res.status(502).json({ error: message, draft: failedDraft });
+      }
     }
 
     if (action === 'updateOutreachDraft') {
@@ -570,7 +678,6 @@ export async function agencyLeadsHandler(req: VercelRequest, res: VercelResponse
     if (error instanceof Error && error.message === 'OPENAI_NOT_CONFIGURED') return res.status(503).json({ error: 'OpenAI is not configured for outreach graphic generation.' });
     if (error instanceof Error && error.message === 'GRAPHIC_GENERATION_FAILED') return res.status(502).json({ error: 'The custom graphic could not be generated. Please try again.' });
     if (error instanceof Error && error.message === 'GRAPHIC_UPLOAD_FAILED') return res.status(502).json({ error: 'The custom graphic was created but could not be saved. Please try again.' });
-    if (error instanceof Error && error.message === 'REEL_COVER_QA_FAILED') return res.status(502).json({ error: 'The Reel cover did not pass its text and mobile-readability check. Please regenerate it.' });
     console.error('Agency lead management failed:', error);
     return res.status(500).json({ error: 'Lead management could not be updated. Please try again.' });
   }

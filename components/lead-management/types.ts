@@ -71,7 +71,7 @@ export interface AgencyMarketingPeriod {
   is_estimate: boolean;
 }
 
-export type OutreachDraftStatus = 'ready' | 'sent' | 'archived';
+export type OutreachDraftStatus = 'pending' | 'generating' | 'ready' | 'failed' | 'sent' | 'archived';
 
 export interface OutreachDraft {
   id: string;
@@ -89,6 +89,8 @@ export interface OutreachDraft {
   graphic_url?: string | null;
   message: string;
   status: OutreachDraftStatus;
+  generation_error?: string | null;
+  generation_attempts: number;
   sent_at?: string | null;
   created_at: string;
   updated_at: string;
