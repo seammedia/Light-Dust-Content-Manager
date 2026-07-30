@@ -413,6 +413,54 @@ function escapeHtml(value: string) {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
 
+function changeHtml(change: number | null) {
+  if (change === null) return '';
+  const colour = change > 0 ? '#15803d' : change < 0 ? '#b91c1c' : '#78716c';
+  return ` <span style="color:${colour};font-weight:700;">${escapeHtml(changeWords(change).trim())}</span>`;
+}
+
+function comparisonChartHtml(metrics: ReportMetric[]) {
+  const chartMetrics = metrics
+    .filter((metric) => metric.previousValue !== null)
+    .sort((a, b) => Math.max(b.value, b.previousValue || 0) - Math.max(a.value, a.previousValue || 0))
+    .slice(0, 4);
+
+  if (chartMetrics.length === 0) return '';
+
+  const rows = chartMetrics.map((metric) => {
+    const previousValue = metric.previousValue || 0;
+    const maximum = Math.max(metric.value, previousValue, 1);
+    const width = (value: number) => value === 0 ? 0 : Math.max(3, Math.round((value / maximum) * 100));
+    const previousWidth = width(previousValue);
+    const currentWidth = width(metric.value);
+    const bar = (barWidth: number, colour: string) => barWidth === 0
+      ? '<span style="font-size:12px;color:#a8a29e;">0</span>'
+      : `<table role="presentation" width="${barWidth}%" cellpadding="0" cellspacing="0" border="0" style="width:${barWidth}%;"><tr><td height="10" style="height:10px;border-radius:5px;background:${colour};font-size:0;line-height:0;">&nbsp;</td></tr></table>`;
+
+    return `
+      <tr>
+        <td colspan="2" style="padding:12px 0 5px;font-size:13px;font-weight:700;color:#44403c;">${escapeHtml(metric.label)}</td>
+      </tr>
+      <tr>
+        <td width="92" style="padding:3px 10px 3px 0;font-size:11px;color:#78716c;white-space:nowrap;">Previous ${formatNumber(previousValue)}</td>
+        <td style="padding:3px 0;">${bar(previousWidth, '#d6d3d1')}</td>
+      </tr>
+      <tr>
+        <td width="92" style="padding:3px 10px 3px 0;font-size:11px;color:#15803d;font-weight:700;white-space:nowrap;">Current ${formatNumber(metric.value)}</td>
+        <td style="padding:3px 0;">${bar(currentWidth, '#22c55e')}</td>
+      </tr>`;
+  }).join('');
+
+  return `
+    <div style="margin-top:20px;padding-top:18px;border-top:1px solid #e7e5e4;">
+      <h3 style="margin:0 0 4px;color:#1c3c34;font-size:15px;">30-day comparison</h3>
+      <p style="margin:0 0 6px;color:#78716c;font-size:12px;">Current 30 days compared with the previous 30 days</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        ${rows}
+      </table>
+    </div>`;
+}
+
 export function buildClientAnalyticsEmail(report: ClientAnalyticsReport) {
   const subject = `${report.clientName}: your 30-day social performance update`;
   const lines = [
@@ -446,8 +494,9 @@ export function buildClientAnalyticsEmail(report: ClientAnalyticsReport) {
         <h2 style="margin:0 0 14px;color:#1c3c34;font-size:20px;">${escapeHtml(titleCase(platform.platform))}</h2>
         <ul style="margin:0;padding-left:20px;color:#44403c;">
           <li style="margin:8px 0;">Published posts measured: ${platform.posts}</li>
-          ${platform.metrics.map((metric) => `<li style="margin:8px 0;">${escapeHtml(metric.label)}: <strong>${formatNumber(metric.value)}</strong>${escapeHtml(changeWords(metric.changePercent))}</li>`).join('')}
+          ${platform.metrics.map((metric) => `<li style="margin:8px 0;">${escapeHtml(metric.label)}: <strong>${formatNumber(metric.value)}</strong>${changeHtml(metric.changePercent)}</li>`).join('')}
         </ul>
+        ${comparisonChartHtml(platform.metrics)}
       </div>`).join('')
     : '<p style="padding:18px;border-radius:12px;background:#f5f5f0;color:#57534e;">We do not yet have enough connected-platform performance data for this reporting period. We will keep monitoring the connection and include the available results in your next update.</p>';
 

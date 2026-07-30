@@ -97,6 +97,51 @@ test('email follows the copy format and contains no em dash', () => {
   assert.equal(email.html.includes(emDash), false);
 });
 
+test('email highlights growth in green and renders a 30-day comparison chart', () => {
+  const report = buildReportFromSnapshots({
+    clientId: 'client-1',
+    clientName: 'Example Client',
+    recipientName: 'Alex',
+    periodEnd: '2026-07-27',
+  }, [{
+    post_id: 'post-current',
+    platform: 'instagram',
+    captured_on: '2026-07-27',
+    published_at: '2026-07-10T08:00:00.000Z',
+    impressions: 150,
+    reach: 80,
+    likes: 20,
+    comments: 0,
+    shares: 0,
+    saves: 0,
+    clicks: 0,
+    views: 0,
+    raw_metrics: { impressions: 150, reach: 80, likes: 20 },
+  }], [{
+    post_id: 'post-previous',
+    platform: 'instagram',
+    captured_on: '2026-06-27',
+    published_at: '2026-06-10T08:00:00.000Z',
+    impressions: 100,
+    reach: 100,
+    likes: 20,
+    comments: 0,
+    shares: 0,
+    saves: 0,
+    clicks: 0,
+    views: 0,
+    raw_metrics: { impressions: 100, reach: 100, likes: 20 },
+  }]);
+  const email = buildClientAnalyticsEmail(report);
+
+  assert.match(email.html, /color:#15803d;font-weight:700;">\(50% up from the previous period\)/);
+  assert.match(email.html, /color:#b91c1c;font-weight:700;">\(20% down from the previous period\)/);
+  assert.match(email.html, /30-day comparison/);
+  assert.match(email.html, /Current 30 days compared with the previous 30 days/);
+  assert.match(email.html, /Previous 100/);
+  assert.match(email.html, /Current 150/);
+});
+
 test('recognises the configured Monday morning window in Melbourne', () => {
   assert.equal(isDueInMelbourne(new Date('2026-08-02T23:30:00.000Z'), 1, '09:00'), true);
   assert.equal(isDueInMelbourne(new Date('2026-08-03T00:30:00.000Z'), 1, '09:00'), false);
