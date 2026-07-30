@@ -14,6 +14,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Sparkles,
   Target,
   TrendingUp,
   UserRound,
@@ -21,12 +22,14 @@ import {
   X,
 } from 'lucide-react';
 import { LeadModal } from './lead-management/LeadModal';
+import { OutreachStudio } from './lead-management/OutreachStudio';
 import {
   AgencyLead,
   AgencyLeadStage,
   AgencyMarketingPeriod,
   LEAD_SOURCES,
   LEAD_STAGES,
+  OutreachDraft,
   STAGE_STYLES,
 } from './lead-management/types';
 
@@ -34,7 +37,7 @@ interface LeadManagementProps {
   pin: string;
 }
 
-type LeadTab = 'overview' | 'leads' | 'performance';
+type LeadTab = 'overview' | 'leads' | 'outreach' | 'performance';
 
 const LOST_STAGES: AgencyLeadStage[] = ['not_interested', 'no_response', 'not_qualified'];
 const WARM_STAGES: AgencyLeadStage[] = ['warm', 'interested', 'call_booked', 'proposal_sent'];
@@ -155,6 +158,7 @@ const defaultMarketingPeriod = (periodStart = INITIAL_WINDOW_START, periodEnd = 
 export function LeadManagement({ pin }: LeadManagementProps) {
   const [leads, setLeads] = useState<AgencyLead[]>([]);
   const [periods, setPeriods] = useState<AgencyMarketingPeriod[]>([]);
+  const [outreachDrafts, setOutreachDrafts] = useState<OutreachDraft[]>([]);
   const [tab, setTab] = useState<LeadTab>('overview');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -188,6 +192,7 @@ export function LeadManagement({ pin }: LeadManagementProps) {
       const result = await request('GET');
       setLeads(result.leads || []);
       setPeriods(result.periods || []);
+      setOutreachDrafts(result.outreachDrafts || []);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Lead management is unavailable.');
     } finally {
@@ -437,6 +442,7 @@ export function LeadManagement({ pin }: LeadManagementProps) {
         {([
           ['overview', 'Overview', BarChart3],
           ['leads', 'Lead pipeline', Users],
+          ['outreach', 'Outreach Studio', Sparkles],
           ['performance', 'Ad performance', Megaphone],
         ] as Array<[LeadTab, string, typeof Users]>).map(([value, label, Icon]) => (
           <button key={value} type="button" onClick={() => setTab(value)} className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors sm:flex-none ${tab === value ? 'bg-brand-green text-white' : 'text-stone-500 hover:bg-stone-50 hover:text-brand-dark'}`}>
@@ -612,6 +618,14 @@ export function LeadManagement({ pin }: LeadManagementProps) {
             {windowPeriods.length === 0 && <div className="px-6 py-16 text-center"><Megaphone className="mx-auto h-9 w-9 text-stone-300" /><p className="mt-3 font-semibold text-brand-dark">No acquisition stats for this window</p><p className="mt-1 text-sm text-stone-500">Add paid or organic acquisition totals when they are ready.</p></div>}
           </section>
         </div>
+      )}
+
+      {tab === 'outreach' && (
+        <OutreachStudio
+          pin={pin}
+          drafts={outreachDrafts}
+          onChanged={fetchData}
+        />
       )}
 
       <LeadModal lead={selectedLead} open={leadModalOpen} saving={saving} onClose={() => { setLeadModalOpen(false); setSelectedLead(null); }} onSave={saveLead} />

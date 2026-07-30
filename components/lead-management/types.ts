@@ -71,6 +71,29 @@ export interface AgencyMarketingPeriod {
   is_estimate: boolean;
 }
 
+export type OutreachDraftStatus = 'ready' | 'sent' | 'archived';
+
+export interface OutreachDraft {
+  id: string;
+  agency_lead_id?: string | null;
+  instagram_username: string;
+  contact_name?: string | null;
+  business_name: string;
+  industry?: string | null;
+  location?: string | null;
+  profile_notes?: string | null;
+  offer_focus?: string | null;
+  graphic_direction?: string | null;
+  graphic_headline?: string | null;
+  graphic_prompt?: string | null;
+  graphic_url?: string | null;
+  message: string;
+  status: OutreachDraftStatus;
+  sent_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export const LEAD_STAGES: Array<{ value: AgencyLeadStage; label: string }> = [
   { value: 'new', label: 'New' },
   { value: 'warm', label: 'Warm Lead' },

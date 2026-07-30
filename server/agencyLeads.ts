@@ -1,4 +1,6 @@
+import { randomUUID } from 'node:crypto';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import { cleanText, portalDb } from './portal.js';
 
 const LOST_STAGES = new Set(['not_interested', 'no_response', 'not_qualified']);
@@ -8,6 +10,7 @@ const VALID_STAGES = new Set([
   'not_interested', 'no_response', 'not_qualified',
 ]);
 const VALID_SOURCES = new Set(['meta_ads', 'google_ads', 'referral', 'website', 'instagram', 'facebook_organic', 'linkedin', 'email', 'existing_client', 'prospecting', 'networking', 'manual', 'other']);
+const VALID_OUTREACH_STATUSES = new Set(['ready', 'sent', 'archived']);
 
 function nullableText(value: unknown, max: number) {
   const cleaned = cleanText(value, max);
@@ -29,6 +32,127 @@ function nullableDate(value: unknown) {
 function dateOnly(value: unknown) {
   const cleaned = cleanText(value, 10);
   return /^\d{4}-\d{2}-\d{2}$/.test(cleaned) ? cleaned : null;
+}
+
+function safeStorageSegment(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-|-$/g, '').slice(0, 80) || 'instagram-lead';
+}
+
+function stripMessageDashes(value: string) {
+  return value.replace(/[—–]/g, ' - ').replace(/[ \t]+\n/g, '\n').trim();
+}
+
+async function generateOutreachCopy(input: Record<string, unknown>) {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+  if (!apiKey) throw new Error('GEMINI_NOT_CONFIGURED');
+
+  const contactName = cleanText(input.contact_name, 120);
+  const businessName = cleanText(input.business_name, 200);
+  const industry = cleanText(input.industry, 160);
+  const location = cleanText(input.location, 160);
+  const profileNotes = cleanText(input.profile_notes, 3000);
+  const offerFocus = cleanText(input.offer_focus, 300) || 'social media content and strategy';
+  const graphicDirection = cleanText(input.graphic_direction, 1000);
+
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-3.6-flash',
+    systemInstruction: `You write thoughtful Instagram outreach for Heath at Seam Media, an Australian social media agency.
+
+Rules:
+- Use Australian spelling and a friendly-professional, natural tone.
+- Never use em dashes or en dashes.
+- The message is a first DM to a business that has recently followed Seam Media.
+- Mention one specific, credible detail from the supplied profile notes.
+- Explain that Heath made a quick example graphic for their business.
+- Do not pretend to have researched anything beyond the supplied details.
+- Keep the message between 65 and 105 words in 2 or 3 short paragraphs.
+- Use the contact's first name in a casual greeting when provided.
+- End with one low-pressure question.
+- Do not use hashtags, Markdown, a formal sign-off or more than one emoji.`,
+    generationConfig: {
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: SchemaType.OBJECT,
+        properties: {
+          message: { type: SchemaType.STRING },
+          graphic_headline: { type: SchemaType.STRING },
+          graphic_prompt: { type: SchemaType.STRING },
+        },
+        required: ['message', 'graphic_headline', 'graphic_prompt'],
+      },
+    },
+  });
+
+  const result = await model.generateContent(`Create an outreach message and square social graphic concept using only these details:
+
+Contact: ${contactName || 'Not provided'}
+Business: ${businessName}
+Industry: ${industry || 'Not provided'}
+Location: ${location || 'Not provided'}
+Profile notes: ${profileNotes}
+Seam Media offer: ${offerFocus}
+Requested graphic direction: ${graphicDirection || 'Choose a polished concept that suits the business'}
+
+For graphic_prompt, describe a premium 1:1 Instagram concept. Include the business name and a short, useful headline, but do not invent a logo, pricing, claims, contact details or an offer that was not supplied. The graphic must look like a real social post concept, not an advertisement for Seam Media.`);
+  const parsed = JSON.parse(result.response.text()) as {
+    message: string;
+    graphic_headline: string;
+    graphic_prompt: string;
+  };
+
+  return {
+    message: stripMessageDashes(parsed.message),
+    graphic_headline: stripMessageDashes(parsed.graphic_headline).slice(0, 300),
+    graphic_prompt: stripMessageDashes(parsed.graphic_prompt).slice(0, 4000),
+  };
+}
+
+async function generateAndStoreOutreachGraphic(
+  db: ReturnType<typeof portalDb>,
+  username: string,
+  prompt: string,
+) {
+  const apiKey = process.env.OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY;
+  if (!apiKey) throw new Error('OPENAI_NOT_CONFIGURED');
+
+  const response = await fetch('https://api.openai.com/v1/images/generations', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'gpt-image-2',
+      prompt: `${prompt}
+
+Create a polished, professional square Instagram graphic at 1:1. Keep all visible text concise and correctly spelled. Use strong layout hierarchy, generous spacing and commercially realistic art direction. Do not include Seam Media branding, watermarks or invented logos.`,
+      size: '1024x1024',
+      quality: 'medium',
+      n: 1,
+    }),
+  });
+  if (!response.ok) {
+    const details = await response.text();
+    console.error('Outreach graphic generation failed:', response.status, details.slice(0, 1000));
+    throw new Error('GRAPHIC_GENERATION_FAILED');
+  }
+
+  const result = await response.json() as { data?: Array<{ b64_json?: string }> };
+  const base64 = result.data?.[0]?.b64_json;
+  if (!base64) throw new Error('GRAPHIC_GENERATION_FAILED');
+
+  const storagePath = `outreach/instagram/${safeStorageSegment(username)}/${Date.now()}-${randomUUID()}.png`;
+  const { error } = await db.storage.from('post-images').upload(storagePath, Buffer.from(base64, 'base64'), {
+    cacheControl: '31536000',
+    contentType: 'image/png',
+    upsert: false,
+  });
+  if (error) {
+    console.error('Outreach graphic upload failed:', error);
+    throw new Error('GRAPHIC_UPLOAD_FAILED');
+  }
+  return db.storage.from('post-images').getPublicUrl(storagePath).data.publicUrl;
 }
 
 async function authenticateAgency(req: VercelRequest) {
@@ -82,13 +206,19 @@ export async function agencyLeadsHandler(req: VercelRequest, res: VercelResponse
     const db = await authenticateAgency(req);
 
     if (req.method === 'GET') {
-      const [{ data: leads, error: leadsError }, { data: periods, error: periodsError }] = await Promise.all([
+      const [
+        { data: leads, error: leadsError },
+        { data: periods, error: periodsError },
+        { data: outreachDrafts, error: outreachError },
+      ] = await Promise.all([
         db.from('agency_leads').select('*, client:clients(id, name, provisioning_status, subscription_status, offboarded_at, offboarding_reason)').order('created_at', { ascending: false }).limit(3000),
         db.from('agency_marketing_periods').select('*').order('period_end', { ascending: false }).limit(120),
+        db.from('agency_outreach_drafts').select('*').order('created_at', { ascending: false }).limit(300),
       ]);
       if (leadsError) throw leadsError;
       if (periodsError) throw periodsError;
-      return res.status(200).json({ leads: leads || [], periods: periods || [] });
+      if (outreachError) throw outreachError;
+      return res.status(200).json({ leads: leads || [], periods: periods || [], outreachDrafts: outreachDrafts || [] });
     }
 
     const action = cleanText(req.body?.action, 50);
@@ -157,6 +287,99 @@ export async function agencyLeadsHandler(req: VercelRequest, res: VercelResponse
       return res.status(200).json({ lead });
     }
 
+    if (action === 'generateOutreachDraft') {
+      const input = (req.body?.draft || {}) as Record<string, unknown>;
+      const instagramUsername = cleanText(input.instagram_username, 100).replace(/^@+/, '').replace(/[^a-zA-Z0-9._]/g, '');
+      const businessName = cleanText(input.business_name, 200);
+      const profileNotes = cleanText(input.profile_notes, 3000);
+      if (!instagramUsername || !businessName || !profileNotes) {
+        return res.status(400).json({ error: 'Instagram username, business name and profile notes are required.' });
+      }
+
+      const generated = await generateOutreachCopy({ ...input, business_name: businessName, profile_notes: profileNotes });
+      const graphicUrl = await generateAndStoreOutreachGraphic(db, instagramUsername, generated.graphic_prompt);
+      const payload = {
+        instagram_username: instagramUsername,
+        contact_name: nullableText(input.contact_name, 120),
+        business_name: businessName,
+        industry: nullableText(input.industry, 160),
+        location: nullableText(input.location, 160),
+        profile_notes: profileNotes,
+        offer_focus: nullableText(input.offer_focus, 300),
+        graphic_direction: nullableText(input.graphic_direction, 1000),
+        graphic_headline: generated.graphic_headline,
+        graphic_prompt: generated.graphic_prompt,
+        graphic_url: graphicUrl,
+        message: generated.message,
+        status: 'ready',
+      };
+      const { data: draft, error } = await db.from('agency_outreach_drafts').insert(payload).select('*').single();
+      if (error) throw error;
+      return res.status(200).json({ draft });
+    }
+
+    if (action === 'updateOutreachDraft') {
+      const input = (req.body?.draft || {}) as Record<string, unknown>;
+      const id = cleanText(input.id, 80);
+      if (!id) return res.status(400).json({ error: 'An outreach draft is required.' });
+      const payload: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if (input.message !== undefined) payload.message = stripMessageDashes(cleanText(input.message, 5000));
+      if (input.status !== undefined && VALID_OUTREACH_STATUSES.has(String(input.status))) payload.status = input.status;
+      const { data: draft, error } = await db.from('agency_outreach_drafts').update(payload).eq('id', id).select('*').single();
+      if (error) throw error;
+      return res.status(200).json({ draft });
+    }
+
+    if (action === 'markOutreachSent') {
+      const id = cleanText(req.body?.id, 80);
+      if (!id) return res.status(400).json({ error: 'An outreach draft is required.' });
+      const { data: draft, error: draftError } = await db.from('agency_outreach_drafts').select('*').eq('id', id).maybeSingle();
+      if (draftError) throw draftError;
+      if (!draft) return res.status(404).json({ error: 'That outreach draft could not be found.' });
+
+      let agencyLeadId = draft.agency_lead_id;
+      const contactedAt = draft.sent_at || new Date().toISOString();
+      const messageSent = req.body?.message !== undefined
+        ? stripMessageDashes(cleanText(req.body.message, 5000))
+        : draft.message;
+      if (!agencyLeadId) {
+        const leadPayload = {
+          name: draft.contact_name || `@${draft.instagram_username}`,
+          company: draft.business_name,
+          stage: 'contacted_1',
+          source: 'instagram',
+          source_platform: 'Instagram',
+          owner: 'Heath',
+          conversion_probability: 20,
+          notes: stripMessageDashes([
+            `Instagram outreach sent to @${draft.instagram_username}.`,
+            draft.profile_notes ? `Profile notes: ${draft.profile_notes}` : '',
+            `Message sent:\n${messageSent}`,
+          ].filter(Boolean).join('\n\n')),
+          next_action: 'Watch for a reply on Instagram',
+          last_contacted: contactedAt,
+          updated_at: new Date().toISOString(),
+        };
+        const { data: lead, error: leadError } = await db.from('agency_leads').insert(leadPayload).select('*').single();
+        if (leadError) throw leadError;
+        agencyLeadId = lead.id;
+        await db.from('agency_lead_activities').insert([
+          { lead_id: lead.id, activity_type: 'created', description: 'Lead added from Instagram Outreach Studio.' },
+          { lead_id: lead.id, activity_type: 'contact', description: `Instagram outreach sent to @${draft.instagram_username}.`, metadata: { outreach_draft_id: id } },
+        ]);
+      }
+
+      const { data: updated, error } = await db.from('agency_outreach_drafts').update({
+        agency_lead_id: agencyLeadId,
+        message: messageSent,
+        status: 'sent',
+        sent_at: contactedAt,
+        updated_at: new Date().toISOString(),
+      }).eq('id', id).select('*').single();
+      if (error) throw error;
+      return res.status(200).json({ draft: updated });
+    }
+
     if (action === 'saveMarketingPeriod') {
       const input = (req.body?.period || {}) as Record<string, unknown>;
       const periodStart = dateOnly(input.period_start);
@@ -222,6 +445,10 @@ export async function agencyLeadsHandler(req: VercelRequest, res: VercelResponse
     return res.status(400).json({ error: 'Unknown lead management action.' });
   } catch (error) {
     if (error instanceof Error && error.message === 'UNAUTHORISED') return res.status(401).json({ error: 'Agency access is required.' });
+    if (error instanceof Error && error.message === 'GEMINI_NOT_CONFIGURED') return res.status(503).json({ error: 'Gemini is not configured for outreach message generation.' });
+    if (error instanceof Error && error.message === 'OPENAI_NOT_CONFIGURED') return res.status(503).json({ error: 'OpenAI is not configured for outreach graphic generation.' });
+    if (error instanceof Error && error.message === 'GRAPHIC_GENERATION_FAILED') return res.status(502).json({ error: 'The custom graphic could not be generated. Please try again.' });
+    if (error instanceof Error && error.message === 'GRAPHIC_UPLOAD_FAILED') return res.status(502).json({ error: 'The custom graphic was created but could not be saved. Please try again.' });
     console.error('Agency lead management failed:', error);
     return res.status(500).json({ error: 'Lead management could not be updated. Please try again.' });
   }
