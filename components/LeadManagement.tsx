@@ -185,9 +185,11 @@ export function LeadManagement({ pin }: LeadManagementProps) {
     return result;
   }, [pin]);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError('');
+  const fetchData = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (!silent) {
+      setLoading(true);
+      setError('');
+    }
     try {
       const result = await request('GET');
       setLeads(result.leads || []);
@@ -196,11 +198,16 @@ export function LeadManagement({ pin }: LeadManagementProps) {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Lead management is unavailable.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [request]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  const refreshDataSilently = useCallback(
+    () => fetchData({ silent: true }),
+    [fetchData],
+  );
+
+  useEffect(() => { void fetchData(); }, [fetchData]);
 
   const saveLead = async (lead: Partial<AgencyLead>) => {
     setSaving(true);
@@ -424,7 +431,7 @@ export function LeadManagement({ pin }: LeadManagementProps) {
           <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-500">Track warm leads, follow-ups, conversions and which acquisition channels create the best clients.</p>
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={fetchData} className="rounded-lg border border-stone-300 bg-white p-2.5 text-stone-500 hover:bg-stone-50" aria-label="Refresh leads"><RefreshCw className="h-4 w-4" /></button>
+          <button type="button" onClick={() => { void fetchData(); }} className="rounded-lg border border-stone-300 bg-white p-2.5 text-stone-500 hover:bg-stone-50" aria-label="Refresh leads"><RefreshCw className="h-4 w-4" /></button>
           <button type="button" onClick={syncRevenue} disabled={syncingRevenue} className="flex items-center gap-2 rounded-lg border border-stone-300 bg-white px-3 py-2.5 text-sm font-semibold text-stone-600 hover:bg-stone-50 disabled:opacity-50">{syncingRevenue ? <Loader2 className="h-4 w-4 animate-spin" /> : <DollarSign className="h-4 w-4" />}<span className="hidden sm:inline">{syncingRevenue ? 'Syncing…' : 'Sync revenue'}</span></button>
           <button type="button" onClick={() => { setSelectedLead(null); setLeadModalOpen(true); }} className="flex items-center gap-2 rounded-lg bg-brand-green px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-800"><Plus className="h-4 w-4" /> Add warm lead</button>
         </div>
@@ -624,7 +631,7 @@ export function LeadManagement({ pin }: LeadManagementProps) {
         <OutreachStudio
           pin={pin}
           drafts={outreachDrafts}
-          onChanged={fetchData}
+          onChanged={refreshDataSilently}
         />
       )}
 
