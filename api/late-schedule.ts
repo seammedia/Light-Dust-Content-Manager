@@ -57,6 +57,38 @@ const getZernioPostId = (data: ZernioResponse): string | undefined =>
   data.id ||
   data._id;
 
+interface SchedulingStatusQuery {
+  eq(column: string, value: string): SchedulingStatusQuery;
+  select(columns: string): PromiseLike<{
+    data: { id: string }[] | null;
+    error: unknown;
+  }>;
+}
+
+interface SchedulingStatusClient {
+  from(table: string): {
+    update(values: { status: 'Posted' }): SchedulingStatusQuery;
+  };
+}
+
+export const reconcileExistingScheduledPost = async (
+  supabase: SchedulingStatusClient,
+  postId: string,
+  latePostId: string,
+) => {
+  const { data, error } = await supabase
+    .from('posts')
+    .update({ status: 'Posted' })
+    .eq('id', postId)
+    .eq('late_post_id', latePostId)
+    .select('id');
+
+  return {
+    error,
+    reconciled: !error && data?.length === 1,
+  };
+};
+
 export const buildZernioPlatforms = (
   platforms: { platform: string; accountId: string }[],
   contentType: 'post' | 'reel' | 'story',
@@ -148,7 +180,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!claimedRows?.length) {
     const { data: existing, error: existingError } = await supabase
       .from('posts')
-      .select('late_post_id')
+      .select('late_post_id, status')
       .eq('id', postId)
       .maybeSingle();
 
@@ -160,6 +192,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(404).json({ error: 'Content-manager post not found' });
     }
     if (existing.late_post_id && !existing.late_post_id.startsWith('scheduling:')) {
+      if (existing.status !== 'Posted') {
+        const { reconciled, error: reconcileError } = await reconcileExistingScheduledPost(
+          supabase as unknown as SchedulingStatusClient,
+          postId,
+          existing.late_post_id,
+        );
+
+        if (!reconciled) {
+          console.error('Existing Zernio post found but status reconciliation failed:', reconcileError);
+          return res.status(500).json({
+            error: 'This post is already scheduled, but its calendar status could not be updated.',
+          });
+        }
+      }
+
       return res.status(200).json({
         id: existing.late_post_id,
         post: { _id: existing.late_post_id },

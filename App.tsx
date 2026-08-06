@@ -1078,19 +1078,28 @@ export default function App() {
       }
       // Database Update
       const updates = mapPostToDb({ [field]: value });
-      const { error } = await supabase
+      let updateQuery = supabase
         .from('posts')
         .update(updates)
         .eq('id', id);
 
-      if (error) {
+      // Approval states must never overwrite a post that has already been
+      // claimed or scheduled. The database predicate also protects stale tabs.
+      if (field === 'status' && value !== 'Posted') {
+        updateQuery = updateQuery.is('late_post_id', null);
+      }
+
+      const { data: updatedRows, error } = await updateQuery.select('id');
+
+      if (error || !updatedRows?.length) {
         console.error('Error updating post:', error);
-        if (field === 'imageUrl' && (error.code === '413' || error.message?.includes('payload'))) {
+        if (field === 'imageUrl' && (error?.code === '413' || error?.message?.includes('payload'))) {
             alert("The image is too large to save to the database. Please try a smaller file.");
-        } else {
+        } else if (error) {
             setStorageError("Failed to save changes. Please check your connection.");
         }
-        // Revert optimism if needed (could be improved in future)
+        // Refresh if the write failed or a scheduled row rejected a stale
+        // approval-state update.
         fetchPosts();
       } else if (isStatusChange && currentClient) {
         // Auto-post to social media when status changes to "Approved"
@@ -2314,11 +2323,26 @@ export default function App() {
                 <div>
                   <button
                     onClick={async () => {
-                      if (confirm(`Approve all ${filteredPosts.length} posts in this month?`)) {
-                        const updates = filteredPosts.map(post =>
-                          supabase.from('posts').update({ status: 'Approved' }).eq('id', post.id)
+                      const approvablePosts = filteredPosts.filter(
+                        post => post.status !== 'Posted' && !post.latePostId
+                      );
+                      if (approvablePosts.length === 0) {
+                        alert('There are no unscheduled posts to approve in this month.');
+                        return;
+                      }
+                      if (confirm(`Approve all ${approvablePosts.length} unscheduled posts in this month?`)) {
+                        const updates = approvablePosts.map(post =>
+                          supabase
+                            .from('posts')
+                            .update({ status: 'Approved' })
+                            .eq('id', post.id)
+                            .is('late_post_id', null)
+                            .select('id')
                         );
-                        await Promise.all(updates);
+                        const results = await Promise.all(updates);
+                        if (results.some(result => result.error)) {
+                          setStorageError('Some posts could not be approved. Please try again.');
+                        }
                         fetchPosts();
                       }
                     }}
@@ -2739,7 +2763,9 @@ Heath`
                                         <select
                                             value={post.status}
                                             onChange={(e) => handleUpdatePost(post.id, 'status', e.target.value)}
-                                            className={`w-full appearance-none pl-3 pr-8 py-2 rounded text-xs font-bold uppercase tracking-wider border focus:outline-none focus:ring-2 focus:ring-offset-1 ${getStatusColor(post.status)} cursor-pointer transition-colors shadow-sm`}
+                                            disabled={post.status === 'Posted'}
+                                            title={post.status === 'Posted' ? 'Scheduled posts cannot be moved back to an approval status.' : undefined}
+                                            className={`w-full appearance-none pl-3 pr-8 py-2 rounded text-xs font-bold uppercase tracking-wider border focus:outline-none focus:ring-2 focus:ring-offset-1 ${getStatusColor(post.status)} ${post.status === 'Posted' ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'} transition-colors shadow-sm`}
                                         >
                                             <option value="Client Idea">Client Idea</option>
                                             <option value="Draft">Draft</option>
