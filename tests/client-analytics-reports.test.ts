@@ -81,6 +81,21 @@ test('uses only the latest snapshot per post and exposes only returned metrics',
   assert.deepEqual(report.platforms[0].metrics.map((metric) => metric.key), ['impressions', 'reach', 'likes']);
   assert.equal(report.platforms[0].metrics[0].value, 140);
   assert.equal(report.platforms[0].metrics[0].changePercent, 40);
+  assert.equal(report.dailyAttribution, 'published');
+  assert.deepEqual(report.dailySeries, [{
+    date: '2026-07-10',
+    posts: 1,
+    metrics: {
+      impressions: 140,
+      reach: 100,
+      likes: 14,
+      comments: 0,
+      shares: 0,
+      saves: 0,
+      clicks: 0,
+      views: 0,
+    },
+  }]);
 });
 
 test('email follows the copy format and contains no em dash', () => {
@@ -198,6 +213,8 @@ test('summarises a live 30-day report for the client analytics screen', () => {
   assert.equal(summary.metrics.find((metric) => metric.key === 'reach')?.value, 120);
   assert.equal(summary.metrics.find((metric) => metric.key === 'engagements')?.value, 24);
   assert.equal(summary.platforms[0].platform, 'instagram');
+  assert.equal(summary.dailySeries[0].date, '2026-07-20');
+  assert.equal(summary.dailySeries[0].metrics.views, 180);
 });
 
 test('the production email contains no em dash characters', () => {

@@ -47,6 +47,12 @@ export type PlatformReport = {
   metrics: ReportMetric[];
 };
 
+export type DailyAnalyticsPoint = {
+  date: string;
+  posts: number;
+  metrics: Record<MetricKey, number>;
+};
+
 export type ClientAnalyticsReport = {
   clientId: string;
   clientName: string;
@@ -59,6 +65,8 @@ export type ClientAnalyticsReport = {
   generatedAt: string;
   provider: 'zernio_api' | 'zernio_snapshots' | 'mock';
   platforms: PlatformReport[];
+  dailySeries: DailyAnalyticsPoint[];
+  dailyAttribution: 'received' | 'published';
   hasData: boolean;
   dataNote?: string;
 };
@@ -79,6 +87,8 @@ export type PortalAnalyticsSummary = {
   sampledPosts: number;
   metrics: PortalAnalyticsMetric[];
   platforms: PlatformReport[];
+  dailySeries: DailyAnalyticsPoint[];
+  dailyAttribution: ClientAnalyticsReport['dailyAttribution'];
   dataNote?: string;
 };
 
@@ -88,6 +98,7 @@ export type ReportRequest = {
   recipientName?: string | null;
   periodEnd?: string;
   lookbackDays?: number;
+  includeDaily?: boolean;
 };
 
 type SnapshotRow = {
@@ -108,6 +119,28 @@ type ZernioPlatformBreakdown = {
   platform: string;
   postCount?: number;
 } & Partial<Record<MetricKey, number | string | null>>;
+
+type ZernioDailyPoint = {
+  date?: string;
+  postCount?: number;
+  metrics?: Record<string, unknown> | null;
+};
+
+type ZernioDailyMetricsPayload = {
+  dailyData?: ZernioDailyPoint[];
+  platformBreakdown?: ZernioPlatformBreakdown[];
+  error?: string;
+};
+
+export type TopPostAnalytics = {
+  id: string;
+  content: string;
+  publishedAt: string | null;
+  platform: string;
+  thumbnailUrl: string | null;
+  postUrl: string | null;
+  metrics: Record<MetricKey | 'engagements' | 'engagementRate', number>;
+};
 
 export interface AnalyticsProvider {
   readonly name: ClientAnalyticsReport['provider'];
@@ -160,6 +193,8 @@ export function summariseClientAnalyticsReport(report: ClientAnalyticsReport): P
     sampledPosts,
     metrics,
     platforms: report.platforms,
+    dailySeries: report.dailySeries,
+    dailyAttribution: report.dailyAttribution,
     dataNote: report.dataNote,
   };
 }
@@ -222,6 +257,36 @@ function latestSnapshots(rows: SnapshotRow[]) {
     if (!current || row.captured_on > current.captured_on) latest.set(key, row);
   }
   return [...latest.values()];
+}
+
+function emptyMetricValues() {
+  return Object.fromEntries(METRIC_KEYS.map((key) => [key, 0])) as Record<MetricKey, number>;
+}
+
+function dailySeriesFromSnapshots(rows: SnapshotRow[]) {
+  const days = new Map<string, { posts: Set<string>; metrics: Record<MetricKey, number> }>();
+  for (const row of latestSnapshots(rows)) {
+    const date = String(row.published_at || '').slice(0, 10);
+    if (!date) continue;
+    const entry = days.get(date) || { posts: new Set<string>(), metrics: emptyMetricValues() };
+    entry.posts.add(row.post_id);
+    for (const key of METRIC_KEYS) entry.metrics[key] += numeric(row[key]);
+    days.set(date, entry);
+  }
+  return [...days.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([date, value]) => ({ date, posts: value.posts.size, metrics: value.metrics }));
+}
+
+function dailySeriesFromZernio(rows: ZernioDailyPoint[]) {
+  return rows
+    .map((row) => ({
+      date: String(row.date || '').slice(0, 10),
+      posts: numeric(row.postCount),
+      metrics: normaliseZernioMetrics(row.metrics || {}),
+    }))
+    .filter((row) => Boolean(row.date))
+    .sort((left, right) => left.date.localeCompare(right.date));
 }
 
 function aggregate(rows: SnapshotRow[]) {
@@ -295,6 +360,8 @@ export function buildReportFromSnapshots(
     generatedAt: new Date().toISOString(),
     provider,
     platforms,
+    dailySeries: dailySeriesFromSnapshots(currentRows),
+    dailyAttribution: 'published',
     hasData,
     dataNote: hasData
       ? undefined
@@ -341,6 +408,8 @@ function buildReportFromZernioBreakdowns(
   request: ReportRequest,
   currentRows: ZernioPlatformBreakdown[],
   previousRows: ZernioPlatformBreakdown[],
+  dailyRows: ZernioDailyPoint[] = [],
+  dailyAttribution: ClientAnalyticsReport['dailyAttribution'] = 'published',
 ): ClientAnalyticsReport {
   const periods = reportingPeriods({ periodEnd: request.periodEnd, lookbackDays: request.lookbackDays });
   const byPlatform = (rows: ZernioPlatformBreakdown[]) =>
@@ -382,6 +451,8 @@ function buildReportFromZernioBreakdowns(
     generatedAt: new Date().toISOString(),
     provider: 'zernio_api',
     platforms,
+    dailySeries: dailySeriesFromZernio(dailyRows),
+    dailyAttribution,
     hasData,
     dataNote: hasData
       ? undefined
@@ -399,33 +470,86 @@ export class ZernioAnalyticsProvider implements AnalyticsProvider {
     this.apiKey = apiKey;
   }
 
-  private async getBreakdown(fromDate: string, toDate: string) {
+  private async zernioRequest<T>(path: string, params: Record<string, string>) {
     if (!this.apiKey) throw new Error('Zernio analytics is not configured.');
-    const url = new URL('https://zernio.com/api/v1/analytics/daily-metrics');
+    const url = new URL(`https://zernio.com/api/v1/${path.replace(/^\//, '')}`);
     url.searchParams.set('profileId', this.profileId);
-    url.searchParams.set('fromDate', `${fromDate}T00:00:00.000Z`);
-    url.searchParams.set('toDate', `${toDate}T23:59:59.999Z`);
-    url.searchParams.set('source', 'all');
+    for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
     const response = await fetch(url, {
       headers: { Authorization: `Bearer ${this.apiKey}` },
     });
-    const payload = await response.json().catch(() => ({})) as {
-      platformBreakdown?: ZernioPlatformBreakdown[];
-      error?: string;
-    };
+    const payload = await response.json().catch(() => ({})) as T & { error?: string };
     if (!response.ok) {
       throw new Error(payload.error || `Zernio analytics returned ${response.status}.`);
     }
-    return Array.isArray(payload.platformBreakdown) ? payload.platformBreakdown : [];
+    return payload;
+  }
+
+  private async getDailyMetrics(fromDate: string, toDate: string, attribution: 'publish' | 'received' = 'publish') {
+    return this.zernioRequest<ZernioDailyMetricsPayload>('analytics/daily-metrics', {
+      fromDate: `${fromDate}T00:00:00.000Z`,
+      toDate: `${toDate}T23:59:59.999Z`,
+      source: 'all',
+      attribution,
+    });
   }
 
   async getReport(request: ReportRequest) {
     const periods = reportingPeriods({ periodEnd: request.periodEnd, lookbackDays: request.lookbackDays });
-    const [current, previous] = await Promise.all([
-      this.getBreakdown(periods.periodStart, periods.periodEnd),
-      this.getBreakdown(periods.previousPeriodStart, periods.previousPeriodEnd),
+    const [current, previous, received] = await Promise.all([
+      this.getDailyMetrics(periods.periodStart, periods.periodEnd),
+      this.getDailyMetrics(periods.previousPeriodStart, periods.previousPeriodEnd),
+      request.includeDaily
+        ? this.getDailyMetrics(periods.periodStart, periods.periodEnd, 'received').catch(() => null)
+        : Promise.resolve(null),
     ]);
-    return buildReportFromZernioBreakdowns(request, current, previous);
+    const receivedRows = received && Array.isArray(received.dailyData) ? received.dailyData : [];
+    const publishedRows = Array.isArray(current.dailyData) ? current.dailyData : [];
+    return buildReportFromZernioBreakdowns(
+      request,
+      Array.isArray(current.platformBreakdown) ? current.platformBreakdown : [],
+      Array.isArray(previous.platformBreakdown) ? previous.platformBreakdown : [],
+      receivedRows.length ? receivedRows : publishedRows,
+      receivedRows.length ? 'received' : 'published',
+    );
+  }
+
+  async getTopPosts(request: ReportRequest): Promise<TopPostAnalytics[]> {
+    const periods = reportingPeriods({ periodEnd: request.periodEnd, lookbackDays: request.lookbackDays });
+    const payload = await this.zernioRequest<Record<string, unknown>>('analytics', {
+      fromDate: periods.periodStart,
+      toDate: periods.periodEnd,
+      source: 'all',
+      sortBy: 'engagement',
+      order: 'desc',
+      limit: '6',
+      page: '1',
+    });
+    const nested = payload.data && typeof payload.data === 'object' ? payload.data as Record<string, unknown> : null;
+    const rows = [payload.posts, payload.items, payload.data, nested?.posts, nested?.items, nested?.data]
+      .find((value) => Array.isArray(value)) as Array<Record<string, unknown>> | undefined;
+    return (rows || []).slice(0, 6).map((row) => {
+      const analytics = row.analytics && typeof row.analytics === 'object'
+        ? row.analytics as Record<string, unknown>
+        : {};
+      const platformRows = Array.isArray(row.platformAnalytics) ? row.platformAnalytics as Array<Record<string, unknown>> : [];
+      const firstPlatform = platformRows[0] || {};
+      const platformAnalytics = firstPlatform.analytics && typeof firstPlatform.analytics === 'object'
+        ? firstPlatform.analytics as Record<string, unknown>
+        : {};
+      const values = normaliseZernioMetrics({ ...platformAnalytics, ...analytics });
+      const engagements = values.likes + values.comments + values.shares + values.saves;
+      const engagementRate = numeric(analytics.engagementRate ?? platformAnalytics.engagementRate);
+      return {
+        id: String(row.postId || row.latePostId || `${row.publishedAt || row.scheduledFor || ''}-${row.platform || firstPlatform.platform || ''}`),
+        content: String(row.content || '').trim(),
+        publishedAt: row.publishedAt ? String(row.publishedAt) : row.scheduledFor ? String(row.scheduledFor) : null,
+        platform: String(row.platform || firstPlatform.platform || 'social').toLowerCase(),
+        thumbnailUrl: row.thumbnailUrl ? String(row.thumbnailUrl) : null,
+        postUrl: row.platformPostUrl ? String(row.platformPostUrl) : firstPlatform.platformPostUrl ? String(firstPlatform.platformPostUrl) : null,
+        metrics: { ...values, engagements, engagementRate },
+      };
+    });
   }
 }
 
