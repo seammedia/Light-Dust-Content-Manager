@@ -63,6 +63,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       recipientName: setting.recipient_name || client.contact_name || client.name,
       periodEnd: periods.periodEnd,
       lookbackDays: setting.lookback_days,
+      includeDaily: true,
+      includeTopPosts: true,
     });
     const email = buildClientAnalyticsEmail(report);
 

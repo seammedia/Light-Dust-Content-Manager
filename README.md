@@ -3250,6 +3250,13 @@ Rollout recorded 5 August 2026:
 - Dwellix has no connected Zernio social account yet, so report delivery remains disabled.
 - Client portal Analytics loads the live 30 completed-day Zernio report on demand and uses stored snapshots only as a provider-failure fallback.
 
+Email analytics expansion recorded 9 August 2026:
+
+- The existing opt-in Monday email now includes the same richer story as the client Analytics page: a daily performance chart, channel contribution, engagement breakdown and top-performing content.
+- Every live preview and scheduled email requests received-attribution daily data plus the leading Zernio posts for the same completed 30-day period.
+- The email includes a direct link to the full client analytics dashboard.
+- The recipient list, opt-in state, send schedule and duplicate protection were not changed by this template expansion.
+
 Vercel Pro resolved the earlier function-count and hourly-cron plan limits. It did not by itself configure the email provider, analytics provider, environment variables, database migration, client mapping, opt-in, or delivery testing. Those remain separate requirements.
 
 ### End-to-end flow
@@ -3259,8 +3266,8 @@ Vercel Pro resolved the earlier function-count and hourly-cron plan limits. It d
 3. It loads only clients explicitly enabled in `client_analytics_report_settings`.
 4. It checks the saved Monday time in `Australia/Melbourne`.
 5. It skips inactive, cancelled, unpaid, incompletely configured, or not-yet-due clients.
-6. It requests two completed 30-day periods from Zernio using the client's `zernio_profile_id`.
-7. It builds platform totals, percentage changes, colour-coded labels and comparison charts.
+6. It requests two completed 30-day comparison periods, the current received-attribution daily series and the current period's top posts from Zernio using the client's `zernio_profile_id`.
+7. It builds headline totals, a daily performance chart, channel contribution, engagement mix, top-performing content, percentage changes and per-platform comparison charts.
 8. It creates and claims a run record before sending.
 9. Resend delivers only explicitly enabled weekly analytics reports; the portal alert shutdown does not use this path.
 10. The run record is updated with `sent` or `failed`, the provider message ID, timestamps and any error.
@@ -3287,11 +3294,16 @@ The client portal uses the same live Zernio provider and reporting-period calcul
 - Positive changes are green.
 - Negative changes are red.
 - Steady results are grey.
+- The HTML email includes a daily performance bar chart using received-attribution data when Zernio returns it. If that optional call is unavailable, it falls back to data grouped by post publish date.
+- The daily chart shows the latest 10 active days within the current period and identifies the peak day. It does not imply that missing days were measured zeros.
+- The HTML email includes a channel-contribution chart using the first available meaningful total in this order: reach, impressions, video views, then engagements.
+- The HTML email includes a measured engagement breakdown across likes, comments, shares and saves.
+- Up to three top-performing posts are shown when Zernio returns post-level analytics, including platform, date, content excerpt, leading metrics and a post link when available.
 - The HTML email includes an email-safe current-versus-previous comparison chart for up to four leading metrics on each platform.
 - Charts use nested HTML tables and inline styles so they render reliably in Gmail and Outlook. Do not replace them with JavaScript, canvas or unsupported interactive charts.
-- The current chart compares two 30-day periods. It is not a multi-week trend line. A true time-series chart will require stored historical series and either an email-safe rendered image or a carefully tested static HTML representation.
+- The current-versus-previous chart still compares two fixed 30-day periods. The daily chart is an activity view inside the current period, not a long-term multi-month trend.
 - If usable data is unavailable, the client receives a clear waiting-for-data explanation rather than invented figures.
-- The plain-text fallback contains the same core figures and comparison wording without the visual chart.
+- The plain-text fallback contains the same core figures, daily trend, channel contribution, engagement breakdown, top content, comparison wording and dashboard link without the visual charts.
 
 ### Live Zernio contract
 
@@ -3309,9 +3321,21 @@ profileId=<clients.zernio_profile_id>
 fromDate=<period start at 00:00:00.000Z>
 toDate=<period end at 23:59:59.999Z>
 source=all
+attribution=publish
 ```
 
-The report uses `platformBreakdown` from the response. The following aliases are normalised:
+The two fixed-period comparisons use `platformBreakdown` from this response. The email also requests the current period from the same endpoint with `attribution=received` for the daily chart, then falls back to the current published-attribution `dailyData` if received-attribution data is unavailable.
+
+Top-performing content is requested from:
+
+```text
+GET https://zernio.com/api/v1/analytics
+Authorization: Bearer <ZERNIO_API_KEY>
+```
+
+with the same `profileId`, current completed 30-day date range, `source=all`, `sortBy=engagement`, `order=desc` and a maximum of six returned posts. The email displays up to the leading three. A top-post request failure does not block the core weekly report.
+
+The following metric aliases are normalised:
 
 | Report metric | Accepted provider fields |
 | --- | --- |
@@ -3474,6 +3498,10 @@ Then verify:
 - No em dash appears in the email text or HTML.
 - Positive, negative and steady change colours render correctly.
 - Charts show current and previous labels and values.
+- The daily trend, channel contribution and engagement breakdown appear when the corresponding provider data exists.
+- Top-performing content appears when Zernio returns post-level analytics, and disappears cleanly when it does not.
+- The dashboard button links to `https://seam-media-content-manager.vercel.app/`.
+- The HTML contains no JavaScript, canvas or SVG charts.
 - Clients without a valid previous value do not receive a misleading percentage.
 - Preview mode still reports `sent: false`.
 - The cron endpoint still rejects an invalid secret.
@@ -3492,6 +3520,8 @@ Existing bundle-size warnings are not specific to this reporting workflow if the
 | Preview has no data | Check the profile mapping, requested dates, Zernio `platformBreakdown`, post history and provider metric availability. |
 | Percentage is absent | The previous value is missing or zero, so a percentage would be misleading. |
 | Chart is absent | No comparable previous-period metrics were returned. |
+| Daily trend is absent | Zernio returned no usable daily reach, impressions, video-view or engagement values for the current period. |
+| Top content is absent | Zernio returned no post-level analytics for the period, or the optional top-post request failed. The core report can still send. |
 | Email did not send | Check the global switch, client opt-in, Monday time, active status, cron authentication and run history. |
 | Resend rejected the email | Check the API key, verified sending domain, sender address and Resend logs. |
 | Duplicate was prevented | A run already exists for that client and reporting period. Confirm the original outcome before considering any retry. |
@@ -3552,7 +3582,7 @@ The agency Lead Management area now includes a **Current clients** tab beside **
 
 ### Analytics email improvements
 
-The client email now starts with a compact **At a glance** summary, then explains **What changed** and **Our focus for the next period** before showing detailed platform comparisons. This makes the value easier to understand without removing the underlying evidence.
+The client email now starts with a compact **At a glance** summary, then shows **Daily performance trend**, **Channel contribution**, **How people responded** and **Top-performing content** before explaining **What changed**, **Our focus for the next period** and detailed platform comparisons. It finishes with a link to the full analytics dashboard. This makes the value easier to understand without removing the underlying evidence.
 
 Inactive legacy workspaces are excluded from the Analytics emails setup list. The enabled-delivery status copy now reflects the actual global switch instead of always warning that delivery is disabled.
 
