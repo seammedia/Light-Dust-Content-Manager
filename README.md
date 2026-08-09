@@ -18,7 +18,7 @@ A multi-client social content management platform where agencies can manage mult
 - 🚀 **Performance Optimized** - Debounced database updates prevent typing lag
 - 📱 **Responsive Design** - Works on all devices
 - 🔐 **PIN-Based Access** - Secure client authentication
-- ✨ **AI Caption Generation** - Generate captions and hashtags from images using Gemini AI (master account only)
+- ✨ **AI Caption Generation** - Generate captions and hashtags from images using OpenAI (master account only)
 - 🚀 **Bulk Post Generation** - Generate multiple posts at once with AI-created captions and hashtags
 - 📧 **Gmail Integration** - Send review notification emails directly from the dashboard
 - 📁 **Google Drive Integration** - Fetch images from client's Drive folders for post generation
@@ -54,14 +54,15 @@ A multi-client social content management platform where agencies can manage mult
    - Copy your **Project URL** (looks like `https://xxxxx.supabase.co`)
    - Copy your **anon/public** key
 
-### 2. Google Gemini API Setup (For AI Caption Generation)
+### 2. OpenAI API Setup (For AI Caption Generation)
 
-1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey)
-2. Create a new API key
-3. Add to Vercel as `VITE_GEMINI_API_KEY`
-4. **Usage:** Master account can click "Generate" button on any post to auto-generate caption and hashtags from the uploaded image
-5. **Model:** Uses `gemini-2.0-flash-exp` for fast image analysis
-6. **Style:** Generates warm, friendly captions with paragraphs (no em dashes) and 4-5 relevant hashtags
+1. Go to [OpenAI Platform](https://platform.openai.com/api-keys)
+2. Create a project API key
+3. Add it to Vercel as the server-side `OPENAI_API_KEY` for Production and Preview
+4. Optionally set `OPENAI_CAPTION_MODEL`; it defaults to `gpt-5.6-luna`
+5. **Usage:** The master account can generate captions from post images, update captions from feedback, and create batches of post ideas
+6. **Security:** Never use a `VITE_` prefix for the caption key because Vite exposes those values to browsers
+7. **Style:** Generates warm, friendly captions with Australian spelling, short paragraphs, no em dashes, and 4-5 relevant hashtags
 
 ### 2b. OpenAI API Setup (For AI Image Generation - gpt-image-2)
 
