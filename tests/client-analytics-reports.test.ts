@@ -4,9 +4,11 @@ import {
   buildClientAnalyticsEmail,
   buildReportFromSnapshots,
   isDueInMelbourne,
+  MockAnalyticsProvider,
   normaliseZernioMetrics,
   reportingPeriods,
   summariseClientAnalyticsReport,
+  ZernioAnalyticsProvider,
 } from '../server/clientAnalyticsReports.ts';
 
 test('builds rolling and comparison periods from the previous completed day', () => {
@@ -156,6 +158,76 @@ test('email highlights growth in green and renders a 30-day comparison chart', (
   assert.match(email.html, /Current 30 days compared with the previous 30 days/);
   assert.match(email.html, /Previous 100/);
   assert.match(email.html, /Current 150/);
+});
+
+test('weekly email includes the richer analytics story in HTML and plain text', async () => {
+  const report = await new MockAnalyticsProvider().getReport({
+    clientId: 'client-preview',
+    clientName: 'Preview Client',
+    recipientName: 'Alex',
+    periodEnd: '2026-08-08',
+    includeDaily: true,
+    includeTopPosts: true,
+  });
+  const email = buildClientAnalyticsEmail(report);
+
+  assert.ok(report.dailySeries.length > 1);
+  assert.equal(report.topPosts.length, 2);
+  assert.match(email.html, /Daily performance trend/);
+  assert.match(email.html, /Channel contribution/);
+  assert.match(email.html, /How people responded/);
+  assert.match(email.html, /Top-performing content/);
+  assert.match(email.html, /Review your analytics/);
+  assert.match(email.html, /https:\/\/seam-media-content-manager\.vercel\.app\//);
+  assert.doesNotMatch(email.html, /<(?:canvas|script|svg)\b/i);
+  assert.match(email.text, /Daily performance trend:/);
+  assert.match(email.text, /Channel contribution:/);
+  assert.match(email.text, /How people responded:/);
+  assert.match(email.text, /Top-performing content:/);
+  assert.match(email.text, /Full analytics dashboard:/);
+});
+
+test('live weekly report requests received-attribution daily data and top posts', async () => {
+  const originalFetch = globalThis.fetch;
+  const calls: URL[] = [];
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    calls.push(url);
+    const isTopPosts = url.pathname.endsWith('/analytics');
+    const payload = isTopPosts ? {
+      posts: [{
+        postId: 'post-1',
+        content: 'A strong client result.',
+        publishedAt: '2026-08-05T08:00:00.000Z',
+        platform: 'instagram',
+        analytics: { reach: 900, likes: 60, comments: 8, shares: 12, saves: 20 },
+      }],
+    } : {
+      dailyData: [{ date: '2026-08-05', postCount: 1, metrics: { reach: 900, likes: 60 } }],
+      platformBreakdown: [{ platform: 'instagram', postCount: 1, reach: 900, likes: 60 }],
+    };
+    return new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+
+  try {
+    const report = await new ZernioAnalyticsProvider('profile-1', 'test-api-key').getReport({
+      clientId: 'client-live',
+      clientName: 'Live Client',
+      periodEnd: '2026-08-08',
+      includeDaily: true,
+      includeTopPosts: true,
+    });
+    assert.equal(report.dailyAttribution, 'received');
+    assert.equal(report.dailySeries[0].metrics.reach, 900);
+    assert.equal(report.topPosts[0].metrics.engagements, 100);
+    assert.ok(calls.some((url) => url.pathname.endsWith('/analytics/daily-metrics') && url.searchParams.get('attribution') === 'received'));
+    assert.ok(calls.some((url) => url.pathname.endsWith('/analytics') && url.searchParams.get('sortBy') === 'engagement'));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test('recognises the configured Monday morning window in Melbourne', () => {
