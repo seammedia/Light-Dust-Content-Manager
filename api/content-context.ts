@@ -1,8 +1,38 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { authenticatePortalRequest } from '../server/portal.js';
+import {
+  summariseClientAnalyticsReport,
+  SupabaseSnapshotAnalyticsProvider,
+  ZernioAnalyticsProvider,
+} from '../server/clientAnalyticsReports.js';
+
+export const maxDuration = 30;
 
 function clientIdFrom(req: VercelRequest) {
   return String(req.query.clientId || req.body?.clientId || '').trim();
+}
+
+function normaliseScheduleTime(slot: any): string | null {
+  const direct = String(slot?.time || slot?.localTime || slot?.hourLabel || '').trim();
+  const match = direct.match(/^(\d{1,2}):([0-5]\d)/);
+  if (match) {
+    const hour = Number(match[1]);
+    if (hour >= 0 && hour <= 23) return `${String(hour).padStart(2, '0')}:${match[2]}`;
+  }
+  const hour = Number(slot?.hour);
+  if (Number.isInteger(hour) && hour >= 0 && hour <= 23) return `${String(hour).padStart(2, '0')}:00`;
+  return null;
+}
+
+function learnedScheduleTimes(learnings: any[]) {
+  const slots = learnings
+    .filter((learning) => learning.learning_type === 'posting_time')
+    .flatMap((learning) => learning.evidence?.bestTimes || [])
+    .flatMap((bestTime: any) => bestTime.slots || bestTime.bestTimes || [])
+    .map((slot: any) => ({ time: normaliseScheduleTime(slot), score: Number(slot.score ?? slot.engagement ?? slot.value ?? 0) }))
+    .filter((slot: { time: string | null; score: number }): slot is { time: string; score: number } => Boolean(slot.time))
+    .sort((a: { score: number }, b: { score: number }) => b.score - a.score);
+  return [...new Set(slots.map((slot: { time: string }) => slot.time))].slice(0, 8);
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -24,7 +54,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ updated: ids.length });
     }
 
-    const [{ data: profile }, { data: ideas }, { data: learnings }, { data: metrics }] = await Promise.all([
+    const [{ data: client }, { data: profile }, { data: ideas }, { data: learnings }, { data: metrics }] = await Promise.all([
+      db.from('clients')
+        .select('id, name, brand_name, zernio_profile_id, analytics_enabled')
+        .eq('id', clientId)
+        .maybeSingle(),
       db.from('content_intelligence_profiles')
         .select('industry, audience, objectives, platforms, compliance_notes')
         .eq('client_id', clientId)
@@ -38,7 +72,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .order('created_at', { ascending: false })
         .limit(12),
       db.from('content_learnings')
-        .select('learning_type, platform, statement, recommendation, confidence, sample_size, last_confirmed_at')
+        .select('learning_type, platform, statement, recommendation, confidence, sample_size, evidence, last_confirmed_at')
         .eq('client_id', clientId)
         .eq('active', true)
         .order('confidence', { ascending: false })
@@ -57,24 +91,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!latest.has(key)) latest.set(key, metric);
     }
     const rows = [...latest.values()];
-    const total = (key: string) => rows.reduce((sum, row) => sum + Number(row[key] || 0), 0);
     const topPosts = [...rows]
       .sort((a, b) => (Number(b.reach || b.impressions || b.views || 0) - Number(a.reach || a.impressions || a.views || 0)))
       .slice(0, 5);
+
+    let report;
+    let liveAnalyticsError: string | null = null;
+    const reportRequest = {
+      clientId,
+      clientName: client?.brand_name || client?.name || 'Client',
+      lookbackDays: 30,
+    };
+    if (client?.analytics_enabled && client.zernio_profile_id) {
+      try {
+        report = await new ZernioAnalyticsProvider(client.zernio_profile_id).getReport(reportRequest);
+      } catch (error) {
+        liveAnalyticsError = error instanceof Error ? error.message : 'Live analytics could not be loaded.';
+      }
+    }
+    if (!report) {
+      report = await new SupabaseSnapshotAnalyticsProvider(db).getReport(reportRequest);
+    }
+    const analytics = summariseClientAnalyticsReport(report);
 
     return res.status(200).json({
       profile: profile || null,
       ideas: ideas || [],
       learnings: learnings || [],
-      analytics: {
-        sampledPosts: rows.length,
-        impressions: total('impressions'),
-        reach: total('reach'),
-        engagements: total('likes') + total('comments') + total('shares') + total('saves'),
-        clicks: total('clicks'),
-        views: total('views'),
-        topPosts,
-      },
+      scheduleTimes: learnedScheduleTimes(learnings || []),
+      analytics: { ...analytics, topPosts, liveAnalyticsError },
     });
   } catch (error) {
     if (error instanceof Error && error.message === 'UNAUTHORISED') return res.status(401).json({ error: 'Unauthorised' });

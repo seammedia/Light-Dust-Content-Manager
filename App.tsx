@@ -19,6 +19,7 @@ import { ClientNotifications } from './components/ClientNotifications';
 import { ClientSocialInbox } from './components/ClientSocialInbox';
 import { LeadManagement } from './components/LeadManagement';
 import { supabase } from './services/supabaseClient';
+import { findAccessibleClient } from './services/clientAccess';
 import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles, Mail, Clock, Send, FileText, Image, Film, X, HardDrive, LogOut, Images, Columns3 } from 'lucide-react';
 import { generateCaptionFromImage, updateFromFeedback } from './services/openaiCaptionService';
 import { generateImageFromFeedback, generateImageFromPrompt } from './services/openaiImageService';
@@ -26,6 +27,7 @@ import { isGmailConnected, getConnectedEmail, connectGmail, sendEmail, clearGmai
 import { isDriveConnected, getDriveEmail, connectDrive, clearDriveSettings } from './services/driveService';
 import { isLateConfigured, getProfiles, schedulePost, reschedulePost, LateProfile } from './services/lateService';
 import { uploadMedia, uploadImage, detectMediaType } from './services/storageService';
+import { runUiTransition } from './ui-motion';
 
 function LockedPlanFeature({ name, plan = 'Max', description }: { name: string; plan?: 'Pro' | 'Max'; description?: string }) {
   return (
@@ -408,17 +410,17 @@ function CalendarView({ posts, selectedMonth, onUpdatePostDate, onAddPost }: { p
 
   return (
     <>
-      <div className="bg-white rounded-lg shadow-sm border border-stone-300 p-6">
+      <div className="calendar-shell rounded-2xl border border-black/[0.08] bg-white p-6 shadow-[0_18px_50px_rgba(30,38,29,0.08)]">
         {/* Calendar Header */}
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-serif font-bold text-brand-dark">
+        <div className="mb-6 flex items-center justify-between">
+          <h2 className="font-serif text-2xl font-semibold text-brand-dark">
             {monthNames[month]} {year}
           </h2>
           <div className="flex gap-2">
-            <button onClick={previousMonth} className="px-3 py-1 border border-stone-300 rounded hover:bg-stone-50">
+            <button onClick={previousMonth} className="flex h-9 w-9 items-center justify-center rounded-xl border border-stone-200 text-stone-500 hover:border-brand-green/30 hover:bg-stone-50 hover:text-brand-dark" aria-label="Previous month">
               ←
             </button>
-            <button onClick={nextMonth} className="px-3 py-1 border border-stone-300 rounded hover:bg-stone-50">
+            <button onClick={nextMonth} className="flex h-9 w-9 items-center justify-center rounded-xl border border-stone-200 text-stone-500 hover:border-brand-green/30 hover:bg-stone-50 hover:text-brand-dark" aria-label="Next month">
               →
             </button>
           </div>
@@ -428,14 +430,14 @@ function CalendarView({ posts, selectedMonth, onUpdatePostDate, onAddPost }: { p
         <div className="grid grid-cols-7 gap-2">
           {/* Day Headers */}
           {dayNames.map(day => (
-            <div key={day} className="text-center text-xs font-bold text-stone-500 uppercase tracking-wider bg-purple-100 py-2 rounded">
+            <div key={day} className="rounded-lg bg-[#e8eee4] py-2.5 text-center text-[10px] font-bold uppercase tracking-[0.16em] text-[#4a6741]">
               {day}
             </div>
           ))}
 
           {/* Empty cells for days before month starts */}
           {Array.from({ length: startingDayOfWeek }).map((_, i) => (
-            <div key={`empty-${i}`} className="border border-stone-200 rounded min-h-[100px] bg-stone-50"></div>
+            <div key={`empty-${i}`} className="min-h-[112px] rounded-xl border border-stone-100 bg-stone-50/70"></div>
           ))}
 
           {/* Calendar Days */}
@@ -449,7 +451,7 @@ function CalendarView({ posts, selectedMonth, onUpdatePostDate, onAddPost }: { p
             return (
               <div
                 key={day}
-                className={`border rounded min-h-[100px] p-2 transition-colors cursor-pointer ${holiday ? 'border-red-200 bg-red-50/30' : 'border-stone-200'} ${isDragOver ? 'bg-brand-green/20 border-brand-green border-2' : 'hover:bg-stone-50'}`}
+                className={`calendar-day min-h-[112px] cursor-pointer rounded-xl border p-2.5 transition-all ${holiday ? 'border-red-200 bg-red-50/30' : 'border-stone-200 bg-white'} ${isDragOver ? 'border-2 border-brand-green bg-brand-green/20' : 'hover:-translate-y-0.5 hover:border-brand-green/30 hover:shadow-md'}`}
                 onClick={() => onAddPost && onAddPost(dateStr)}
                 onDragOver={(e) => {
                   e.preventDefault();
@@ -506,7 +508,7 @@ function CalendarView({ posts, selectedMonth, onUpdatePostDate, onAddPost }: { p
                           setDragOverDate(null);
                         }}
                         onClick={(e) => { e.stopPropagation(); setSelectedPost(post); }}
-                        className={`flex items-start gap-1.5 text-xs p-1.5 rounded cursor-pointer ${colors.bg} ${colors.text} ${colors.hoverBg} transition-colors ${post.status !== 'Posted' ? 'cursor-grab active:cursor-grabbing' : ''} ${isDragging ? 'opacity-50' : ''}`}
+                        className={`flex cursor-pointer items-start gap-1.5 rounded-lg p-2 text-xs shadow-sm ${colors.bg} ${colors.text} ${colors.hoverBg} transition-all hover:-translate-y-px ${post.status !== 'Posted' ? 'cursor-grab active:cursor-grabbing' : ''} ${isDragging ? 'opacity-50' : ''}`}
                         title={`${post.status}: ${post.generatedCaption || post.title}${post.imageUrls && post.imageUrls.length > 1 ? ` (${post.imageUrls.length} images)` : ''}${post.status !== 'Posted' ? ' (drag to reschedule)' : ''}`}
                       >
                         {/* Thumbnail with carousel indicator */}
@@ -571,6 +573,36 @@ const isVideoUrl = (url: string | undefined): boolean => {
   return urlLower.includes('.mp4') || urlLower.includes('.mov') || urlLower.includes('.webm') || urlLower.includes('.m4v');
 };
 
+const buildPostContent = (post: Post): string => {
+  let content = post.generatedCaption || '';
+  if (post.generatedHashtags?.length) {
+    content += `\n\n${post.generatedHashtags.map(tag => `#${tag}`).join(' ')}`;
+  }
+  return content || post.imageDescription || '';
+};
+
+const getProfileCompatibility = (post: Post, profile: LateProfile): { compatible: boolean; reason?: string } => {
+  const mediaUrls = post.imageUrls?.length ? post.imageUrls : (post.imageUrl ? [post.imageUrl] : []);
+  const hasMedia = mediaUrls.some(url => url?.startsWith('http'));
+  const isVideo = post.mediaType === 'video' || isVideoUrl(post.imageUrl);
+
+  if (post.contentType === 'story' && !['instagram', 'facebook'].includes(profile.platform)) {
+    return { compatible: false, reason: 'Stories are supported on Facebook and Instagram only.' };
+  }
+  if (profile.platform === 'youtube' && (!isVideo || mediaUrls.length !== 1)) {
+    return { compatible: false, reason: 'YouTube requires exactly one video.' };
+  }
+  if (profile.platform === 'instagram' && !hasMedia) {
+    return { compatible: false, reason: 'Instagram requires an image or video.' };
+  }
+  if (profile.platform === 'tiktok' && !isVideo && buildPostContent(post).length > 90) {
+    return { compatible: false, reason: 'TikTok photo titles are limited to 90 characters.' };
+  }
+  return { compatible: true };
+};
+
+const DEFAULT_SMART_SCHEDULE_TIMES = ['09:00', '11:30', '14:30', '17:30', '19:00'];
+
 // Map DB columns (snake_case) to App types (camelCase)
 const mapDbToPost = (dbPost: any): Post => ({
   id: dbPost.id,
@@ -586,6 +618,7 @@ const mapDbToPost = (dbPost: any): Post => ({
   generatedCaption: dbPost.generated_caption || '',
   generatedHashtags: dbPost.generated_hashtags || [],
   notes: dbPost.notes || '',
+  targetProfileIds: dbPost.target_profile_ids || undefined,
   // A scheduling:* value is a durable in-flight claim, not a provider post ID.
   latePostId: dbPost.late_post_id && !dbPost.late_post_id.startsWith('scheduling:')
     ? dbPost.late_post_id
@@ -608,6 +641,7 @@ const mapPostToDb = (post: Partial<Post>) => {
   if (post.generatedHashtags !== undefined) dbObj.generated_hashtags = post.generatedHashtags;
   if (post.notes !== undefined) dbObj.notes = post.notes;
   if (post.latePostId !== undefined) dbObj.late_post_id = post.latePostId;
+  if (post.targetProfileIds !== undefined) dbObj.target_profile_ids = post.targetProfileIds;
   return dbObj;
 };
 
@@ -702,6 +736,13 @@ export default function App() {
   const [loadingProfiles, setLoadingProfiles] = useState(false);
   const [schedulingPosts, setSchedulingPosts] = useState(false);
   const [scheduleTime, setScheduleTime] = useState('10:00');
+  const [smartScheduling, setSmartScheduling] = useState(true);
+  const [learnedScheduleTimes, setLearnedScheduleTimes] = useState<string[]>([]);
+  const [platformPickerPostId, setPlatformPickerPostId] = useState<string | null>(null);
+  const [platformPickerProfiles, setPlatformPickerProfiles] = useState<LateProfile[]>([]);
+  const [platformPickerSelectedIds, setPlatformPickerSelectedIds] = useState<string[]>([]);
+  const [loadingPlatformPicker, setLoadingPlatformPicker] = useState(false);
+  const [savingPlatformPicker, setSavingPlatformPicker] = useState(false);
 
   // Client Notes state (agency-only)
   const [showClientNotesModal, setShowClientNotesModal] = useState(false);
@@ -709,9 +750,14 @@ export default function App() {
   const [portalSection, setPortalSection] = useState<PortalSection>('home');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [notificationUnread, setNotificationUnread] = useState(0);
-  const hasMaxPortalFeatures = isMasterAccount || (currentClient?.plan_name || '').toLowerCase() === 'max';
-  const currentPlan = (currentClient?.plan_name || '').toLowerCase();
-  const hasSocialInbox = isMasterAccount || currentPlan === 'pro' || currentPlan === 'max';
+  const hasAnalytics = isMasterAccount || currentClient?.analytics_enabled === true;
+  const hasComments = isMasterAccount;
+  const hasSocialInbox = isMasterAccount;
+
+  const navigatePortal = useCallback((section: PortalSection) => {
+    if (section === portalSection) return;
+    runUiTransition(() => setPortalSection(section));
+  }, [portalSection]);
 
   // Generate Posts modal state (agency-only)
   const [showGeneratePostsModal, setShowGeneratePostsModal] = useState(false);
@@ -744,11 +790,7 @@ export default function App() {
       const { data: authData } = await supabase.auth.getSession();
       const authUser = authData.session?.user;
       if (authUser) {
-        const { data: authClient } = await supabase
-          .from('clients')
-          .select('*')
-          .eq('owner_user_id', authUser.id)
-          .maybeSingle();
+        const authClient = await findAccessibleClient(authUser.id);
         if (authClient?.provisioning_status === 'pending_intake') {
           window.location.replace('/onboarding');
           return;
@@ -792,13 +834,14 @@ export default function App() {
             .order('name');
 
           if (allClientsData) {
-            setAllClients(allClientsData.filter(isVisibleClient));
+            const visibleClients = allClientsData.filter(isVisibleClient);
+            setAllClients(visibleClients);
             setIsMasterAccount(true);
             setIsAuthenticated(true);
 
             // If master had selected a client, restore that too
             if (session.clientId) {
-              const client = allClientsData.find(c => c.id === session.clientId);
+              const client = visibleClients.find(c => c.id === session.clientId);
               if (client) {
                 setCurrentClient(client);
                 setBrandContext({
@@ -823,14 +866,16 @@ export default function App() {
             .select('*')
             .eq('pin', session.pin);
 
-          if (clients && clients.length > 0) {
-            setUserClients(clients);
+          const visibleClients = (clients || []).filter(isVisibleClient);
+
+          if (visibleClients.length > 0) {
+            setUserClients(visibleClients);
             setIsMasterAccount(false);
             setIsAuthenticated(true);
 
             if (session.clientId) {
               // Restore previously selected client
-              const client = clients.find(c => c.id === session.clientId);
+              const client = visibleClients.find(c => c.id === session.clientId);
               if (client) {
                 setCurrentClient(client);
                 setBrandContext({
@@ -839,27 +884,27 @@ export default function App() {
                   tone: client.brand_tone || '',
                   keywords: client.brand_keywords || []
                 });
-              } else if (clients.length === 1) {
+              } else if (visibleClients.length === 1) {
                 // Single client, use it
-                setCurrentClient(clients[0]);
+                setCurrentClient(visibleClients[0]);
                 setBrandContext({
-                  name: clients[0].brand_name,
-                  mission: clients[0].brand_mission || '',
-                  tone: clients[0].brand_tone || '',
-                  keywords: clients[0].brand_keywords || []
+                  name: visibleClients[0].brand_name,
+                  mission: visibleClients[0].brand_mission || '',
+                  tone: visibleClients[0].brand_tone || '',
+                  keywords: visibleClients[0].brand_keywords || []
                 });
               } else {
                 // Multiple clients, show selector
                 setShowClientSelector(true);
               }
-            } else if (clients.length === 1) {
+            } else if (visibleClients.length === 1) {
               // Single client, use it
-              setCurrentClient(clients[0]);
+              setCurrentClient(visibleClients[0]);
               setBrandContext({
-                name: clients[0].brand_name,
-                mission: clients[0].brand_mission || '',
-                tone: clients[0].brand_tone || '',
-                keywords: clients[0].brand_keywords || []
+                name: visibleClients[0].brand_name,
+                mission: visibleClients[0].brand_mission || '',
+                tone: visibleClients[0].brand_tone || '',
+                keywords: visibleClients[0].brand_keywords || []
               });
             } else {
               // Multiple clients, show selector
@@ -1003,6 +1048,7 @@ export default function App() {
   };
 
   const selectClient = (client: Client) => {
+    if (!isMasterAccount && !isVisibleClient(client)) return;
     setCurrentClient(client);
     setBrandContext({
       name: client.brand_name,
@@ -1151,14 +1197,7 @@ export default function App() {
     }
 
     try {
-      // Build caption with hashtags
-      let content = post.generatedCaption || '';
-      if (post.generatedHashtags && post.generatedHashtags.length > 0) {
-        content += '\n\n' + post.generatedHashtags.map(tag => `#${tag}`).join(' ');
-      }
-      if (!content) {
-        content = post.imageDescription || '';
-      }
+      const content = buildPostContent(post);
 
       // Check if post has valid media URL(s) (not empty, not base64)
       // For carousels, use imageUrls array; for single images, use imageUrl
@@ -1169,7 +1208,16 @@ export default function App() {
 
       // Fetch all profiles to get platform info
       const allProfiles = await getProfiles();
-      const clientProfiles = allProfiles.filter(p => clientProfileIds.includes(p.id));
+      const targetProfileIds = post.targetProfileIds ?? clientProfileIds;
+      const clientProfiles = allProfiles.filter(profile =>
+        clientProfileIds.includes(profile.id) &&
+        targetProfileIds.includes(profile.id) &&
+        getProfileCompatibility(post, profile).compatible
+      );
+
+      if (clientProfiles.length === 0) {
+        throw new Error('No compatible social accounts are selected for this post.');
+      }
 
       // Check if Instagram is in the client's profiles - Instagram requires media
       const hasInstagram = clientProfiles.some(p => p.platform === 'instagram');
@@ -1209,6 +1257,7 @@ export default function App() {
       setPosts(prev => prev.map(p => p.id === postId ? { ...p, status: 'Posted' as const, latePostId } : p));
     } catch (error) {
       console.error('Auto-schedule error:', error);
+      alert(error instanceof Error ? `Could not schedule this post: ${error.message}` : 'Could not schedule this post.');
     }
   };
 
@@ -1354,12 +1403,67 @@ export default function App() {
       setLateProfiles(profiles);
       // Auto-select all profiles by default
       setSelectedProfiles(profiles.map(p => p.id));
+      if (currentClient?.analytics_enabled) {
+        const response = await fetch(`/api/content-context?clientId=${encodeURIComponent(currentClient.id)}`, {
+          headers: { 'x-portal-pin': getStoredSession()?.pin || '' },
+        });
+        const context = response.ok ? await response.json() : null;
+        setLearnedScheduleTimes(Array.isArray(context?.scheduleTimes) ? context.scheduleTimes : []);
+      } else {
+        setLearnedScheduleTimes([]);
+      }
     } catch (error: any) {
       console.error('Error fetching Late profiles:', error);
       alert(error.message || 'Failed to load social media profiles. Please check your Late API key.');
     } finally {
       setLoadingProfiles(false);
     }
+  };
+
+  const handleOpenPlatformPicker = async (post: Post) => {
+    if (!currentClient) return;
+    setPlatformPickerPostId(post.id);
+    setLoadingPlatformPicker(true);
+    try {
+      const allProfiles = await getProfiles();
+      const clientProfileIds = currentClient.late_profile_ids || [];
+      const profiles = allProfiles.filter(profile => clientProfileIds.includes(profile.id));
+      const compatibleIds = profiles
+        .filter(profile => getProfileCompatibility(post, profile).compatible)
+        .map(profile => profile.id);
+      setPlatformPickerProfiles(profiles);
+      setPlatformPickerSelectedIds(
+        post.targetProfileIds === undefined
+          ? compatibleIds
+          : post.targetProfileIds.filter(id => compatibleIds.includes(id))
+      );
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Could not load social accounts.');
+      setPlatformPickerPostId(null);
+    } finally {
+      setLoadingPlatformPicker(false);
+    }
+  };
+
+  const handleSavePlatformPicker = async () => {
+    if (!platformPickerPostId || platformPickerSelectedIds.length === 0) return;
+    setSavingPlatformPicker(true);
+    const { error } = await supabase
+      .from('posts')
+      .update({ target_profile_ids: platformPickerSelectedIds })
+      .eq('id', platformPickerPostId);
+
+    if (error) {
+      alert(`Could not save platform selection: ${error.message}`);
+      setSavingPlatformPicker(false);
+      return;
+    }
+
+    setPosts(current => current.map(post => post.id === platformPickerPostId
+      ? { ...post, targetProfileIds: platformPickerSelectedIds }
+      : post));
+    setSavingPlatformPicker(false);
+    setPlatformPickerPostId(null);
   };
 
   const handleSchedulePosts = async () => {
@@ -1408,25 +1512,36 @@ export default function App() {
     const failedPostIds: string[] = [];
 
     try {
-      for (const post of approvedPosts) {
-        // Build caption with hashtags
-        let content = post.generatedCaption || '';
-        if (post.generatedHashtags && post.generatedHashtags.length > 0) {
-          content += '\n\n' + post.generatedHashtags.map(tag => `#${tag}`).join(' ');
-        }
+      for (const [postIndex, post] of approvedPosts.entries()) {
+        const content = buildPostContent(post);
 
-        // Build scheduled datetime from post date + selected time
-        const scheduledDateTime = `${post.date}T${scheduleTime}:00`;
+        const smartTimes = learnedScheduleTimes.length ? learnedScheduleTimes : DEFAULT_SMART_SCHEDULE_TIMES;
+        const effectiveScheduleTime = smartScheduling
+          ? smartTimes[postIndex % smartTimes.length]
+          : scheduleTime;
+        const scheduledDateTime = `${post.date}T${effectiveScheduleTime}:00`;
         const scheduledFor = new Date(scheduledDateTime).toISOString();
 
         // Build platforms array
-        const platforms = selectedProfiles.map(profileId => {
+        const targetProfileIds = post.targetProfileIds ?? selectedProfiles;
+        const effectiveProfileIds = selectedProfiles.filter(profileId => {
+          const profile = lateProfiles.find(candidate => candidate.id === profileId);
+          return targetProfileIds.includes(profileId) && !!profile && getProfileCompatibility(post, profile).compatible;
+        });
+        const platforms = effectiveProfileIds.map(profileId => {
           const profile = lateProfiles.find(p => p.id === profileId);
           return {
             platform: profile?.platform || 'instagram',
             accountId: profileId,
           };
         });
+
+        if (platforms.length === 0) {
+          errorCount++;
+          failedPostIds.push(post.title || post.date);
+          lastError = 'No compatible social accounts are selected for this post.';
+          continue;
+        }
 
         try {
           // Detect media type from URL if not set in database
@@ -2041,6 +2156,10 @@ export default function App() {
     return postDate.getMonth() === selectedMonth.getMonth() &&
            postDate.getFullYear() === selectedMonth.getFullYear();
   });
+  const selectedMonthLabel = selectedMonth.toLocaleDateString('en-AU', { month: 'long', year: 'numeric' });
+  const monthNeedsReview = filteredPosts.filter((post) => post.status === 'For Approval' || post.status === 'Revision').length;
+  const monthApproved = filteredPosts.filter((post) => post.status === 'Approved').length;
+  const monthPublished = filteredPosts.filter((post) => post.status === 'Posted').length;
 
   if (configError) {
     return (
@@ -2119,31 +2238,32 @@ export default function App() {
                     Enter Portal
                 </button>
             </form>
-            <p className="mt-8 text-xs text-stone-400">© 2025 Seam Media</p>
+            <p className="mt-8 text-xs text-stone-400">© 2026 Seam Media</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#F5F5F0] text-stone-800 font-sans flex flex-col">
+    <div className="app-shell min-h-screen text-stone-800 font-sans flex flex-col">
       {/* Header */}
-      <header className="bg-white border-b border-stone-200 sticky top-0 z-20 shadow-sm">
-        <div className="mx-auto flex h-16 max-w-[1800px] items-center justify-between gap-3 px-4 sm:px-6">
+      <header className="app-header sticky top-0 z-40 border-b border-black/[0.06] bg-white/90 backdrop-blur-xl">
+        <div className="mx-auto flex h-[72px] max-w-[1920px] items-center justify-between gap-3 px-4 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="p-1.5 bg-brand-green rounded text-white">
-              <Leaf className="w-5 h-5" />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-green text-white shadow-[0_8px_20px_rgba(74,103,65,0.25)]">
+              <Leaf className="h-5 w-5" />
             </div>
-            <h1 className="truncate font-serif text-lg font-bold tracking-tight text-brand-dark sm:text-xl">
-              {currentClient?.name || 'Light Dust'} <span className="hidden font-sans text-sm font-normal text-stone-400 sm:inline">Content Manager</span>
-            </h1>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-green">Seam Media</p>
+              <h1 className="truncate text-sm font-semibold tracking-tight text-brand-dark sm:text-base">{currentClient?.name || 'Content Manager'}</h1>
+            </div>
           </div>
           <div className="flex items-center gap-3">
-             {currentClient && <NotificationBell clientId={currentClient.id} pin={getStoredSession()?.pin || ''} onNavigate={setPortalSection} onUnreadChange={setNotificationUnread} />}
+             {currentClient && <NotificationBell clientId={currentClient.id} pin={getStoredSession()?.pin || ''} onNavigate={navigatePortal} onUnreadChange={setNotificationUnread} />}
              {isMasterAccount && currentClient && (
                <button
                  onClick={handleOpenClientNotes}
-                 className="hidden xl:flex items-center gap-2 text-sm font-medium text-stone-600 hover:text-brand-green px-3 py-2 border border-stone-300 rounded-lg transition-colors"
+                 className="hidden items-center gap-2 rounded-xl border border-stone-200 bg-white/70 px-3 py-2 text-sm font-medium text-stone-600 transition-all hover:border-brand-green/30 hover:text-brand-green xl:flex"
                  title="View/edit client notes (agency only)"
                >
                  <FileText className="w-4 h-4" />
@@ -2153,7 +2273,7 @@ export default function App() {
              {(isMasterAccount || userClients.length > 1) && (
                <button
                  onClick={() => setShowClientSelector(true)}
-                 className="flex items-center gap-2 text-sm font-medium text-stone-600 hover:text-brand-green px-2 sm:px-3 py-2 border border-stone-300 rounded-lg transition-colors"
+                 className="flex items-center gap-2 rounded-xl border border-stone-200 bg-white/70 px-2 py-2 text-sm font-medium text-stone-600 transition-all hover:border-brand-green/30 hover:text-brand-green sm:px-3"
                >
                  <Users className="w-4 h-4" />
                  <span className="hidden sm:inline">Switch Client</span>
@@ -2161,7 +2281,7 @@ export default function App() {
              )}
              <button
                onClick={() => setShowMetaSettings(true)}
-               className="hidden md:flex items-center gap-2 text-sm font-medium text-stone-600 hover:text-brand-green px-3 py-2 border border-stone-300 rounded-lg transition-colors"
+               className="hidden items-center gap-2 rounded-xl border border-stone-200 bg-white/70 px-3 py-2 text-sm font-medium text-stone-600 transition-all hover:border-brand-green/30 hover:text-brand-green md:flex"
                title="Meta Integration Settings"
              >
                <Settings className="w-4 h-4" />
@@ -2169,20 +2289,17 @@ export default function App() {
              <button onClick={fetchPosts} className="hidden text-stone-400 hover:text-brand-green p-2 md:block" title="Refresh Data">
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
              </button>
-             <button className="hidden text-sm font-medium text-stone-500 hover:text-brand-dark px-3 py-2 transition-colors xl:block">
-                Export to CSV
-             </button>
              {isMasterAccount && (
                <button
                 onClick={() => setShowGeneratePostsModal(true)}
-                className="hidden bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white px-4 py-2 rounded-md items-center gap-2 text-sm font-medium transition-all shadow-sm xl:flex"
+                className="hidden items-center gap-2 rounded-xl border border-purple-200 bg-purple-50 px-4 py-2.5 text-sm font-semibold text-purple-700 transition-all hover:bg-purple-100 xl:flex"
               >
                 <Sparkles className="w-4 h-4" /> Generate Posts
               </button>
              )}
              <button
               onClick={() => setIsEditorOpen(true)}
-              className="hidden bg-brand-dark hover:bg-black text-white px-4 py-2 rounded-md items-center gap-2 text-sm font-medium transition-colors shadow-sm md:flex"
+              className="hidden items-center gap-2 rounded-xl bg-brand-dark px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-black md:flex"
             >
               <Plus className="w-4 h-4" /> Add Post
             </button>
@@ -2209,17 +2326,18 @@ export default function App() {
           activeSection={portalSection}
           clientName={currentClient?.name || 'Seam Media'}
           collapsed={sidebarCollapsed}
-          hasMaxFeatures={hasMaxPortalFeatures}
+          hasAnalytics={hasAnalytics}
+          hasComments={hasComments}
           hasSocialInbox={hasSocialInbox}
           notificationUnread={notificationUnread}
           isMasterAccount={isMasterAccount}
-          onNavigate={setPortalSection}
-          onToggle={() => setSidebarCollapsed((collapsed) => !collapsed)}
+          onNavigate={navigatePortal}
+          onToggle={() => runUiTransition(() => setSidebarCollapsed((collapsed) => !collapsed))}
           onLogout={handleLogout}
         />
 
         {/* Compact navigation for phones and tablets */}
-        <nav aria-label="Client portal" className="fixed bottom-0 left-0 right-0 z-30 grid grid-cols-5 border-t border-stone-200 bg-white px-1 py-1.5 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] lg:hidden">
+        <nav aria-label="Client portal" className="fixed bottom-3 left-3 right-3 z-30 grid grid-cols-5 rounded-2xl border border-black/[0.06] bg-white/95 p-1.5 shadow-[0_18px_50px_rgba(28,34,26,0.18)] backdrop-blur-xl lg:hidden">
           {([
             ['home', 'Home'],
             ['content', 'Calendar'],
@@ -2227,13 +2345,14 @@ export default function App() {
             ['connections', 'Social'],
             ['support', 'Support'],
           ] as Array<[PortalSection, string]>).map(([section, label]) => (
-            <button key={section} type="button" onClick={() => setPortalSection(section)} className={`rounded-lg px-1 py-2 text-[11px] font-semibold ${portalSection === section ? 'bg-brand-green text-white' : 'text-stone-500'}`}>{label}</button>
+            <button key={section} type="button" onClick={() => navigatePortal(section)} className={`rounded-xl px-1 py-2 text-[11px] font-semibold transition-all ${portalSection === section ? 'bg-brand-green text-white shadow-sm' : 'text-stone-500 hover:bg-stone-100 hover:text-brand-dark'}`}>{label}</button>
           ))}
         </nav>
 
         {/* Main Content */}
-        <main className={`min-w-0 flex-1 pb-16 lg:pb-0 ${portalSection === 'content' ? 'overflow-x-auto p-4 sm:p-6' : 'overflow-x-hidden'}`}>
-          {currentClient && portalSection === 'home' && <ClientHome client={currentClient} posts={posts} onNavigate={setPortalSection} />}
+        <main className={`min-w-0 flex-1 pb-20 lg:pb-0 ${portalSection === 'content' ? 'content-workspace overflow-x-auto p-4 sm:p-6 lg:p-8' : 'overflow-x-hidden'}`}>
+          <div key={portalSection} className="ui-page">
+          {currentClient && portalSection === 'home' && <ClientHome client={currentClient} posts={posts} onNavigate={navigatePortal} />}
           {currentClient && portalSection === 'account' && (
             <ClientAccount
               client={currentClient}
@@ -2252,18 +2371,18 @@ export default function App() {
           )}
           {currentClient && portalSection === 'connections' && <ClientConnections client={currentClient} pin={getStoredSession()?.pin || ''} />}
           {currentClient && portalSection === 'billing' && <ClientBilling client={currentClient} pin={getStoredSession()?.pin || ''} />}
-          {currentClient && portalSection === 'notifications' && <ClientNotifications clientId={currentClient.id} pin={getStoredSession()?.pin || ''} onNavigate={setPortalSection} />}
-          {portalSection === 'analytics' && (hasMaxPortalFeatures && currentClient ? <ClientAnalytics posts={posts} clientId={currentClient.id} pin={getStoredSession()?.pin || ''} /> : <LockedPlanFeature name="Analytics" />)}
-          {portalSection === 'comments' && (hasMaxPortalFeatures ? (
+          {currentClient && portalSection === 'notifications' && <ClientNotifications clientId={currentClient.id} pin={getStoredSession()?.pin || ''} onNavigate={navigatePortal} />}
+          {portalSection === 'analytics' && (hasAnalytics && currentClient ? <ClientAnalytics posts={posts} clientId={currentClient.id} pin={getStoredSession()?.pin || ''} /> : <LockedPlanFeature name="Analytics" description="Analytics is available for clients enrolled in performance reporting." />)}
+          {portalSection === 'comments' && (hasComments ? (
             <ClientComments
               posts={posts}
-              onOpenCalendar={() => setPortalSection('content')}
+              onOpenCalendar={() => navigatePortal('content')}
               onUpdateComment={(postId, comment) => handleUpdatePost(postId, 'notes', comment)}
             />
-          ) : <LockedPlanFeature name="Comments" />)}
+          ) : <LockedPlanFeature name="Comments" description="Comments are currently locked while this feature is being prepared." />)}
           {portalSection === 'social-inbox' && (hasSocialInbox ? (
-            <ClientSocialInbox onConnectAccounts={() => setPortalSection('connections')} />
-          ) : <LockedPlanFeature name="Social Inbox" plan="Pro" description="Social Inbox is starting its rollout with Pro workspaces. It will bring messages, comments and mentions into one place." />)}
+            <ClientSocialInbox onConnectAccounts={() => navigatePortal('connections')} />
+          ) : <LockedPlanFeature name="Social Inbox" plan="Pro" description="Social Inbox is currently locked while this feature is being prepared." />)}
           {currentClient && portalSection === 'support' && <ClientSupport client={currentClient} pin={getStoredSession()?.pin || ''} />}
           {isMasterAccount && portalSection === 'clients' && (
             <div className="mx-auto max-w-[1600px] p-6">
@@ -2278,9 +2397,43 @@ export default function App() {
           )}
 
           {portalSection === 'content' && (
-          <div className="min-w-[1200px] max-w-[1600px] mx-auto">
+          <div className="mx-auto min-w-[1120px] max-w-[1680px]">
+          <section className="content-hero mb-5 overflow-hidden rounded-[28px] border border-[#223123] bg-[#1f2b20] px-7 py-7 text-white shadow-[0_24px_60px_rgba(28,38,29,0.16)]">
+            <div className="flex items-end justify-between gap-8">
+              <div>
+                <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.07] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-100/80">
+                  <Calendar className="h-3.5 w-3.5" /> Social publishing
+                </div>
+                <h2 className="font-serif text-4xl font-semibold tracking-tight text-white">{selectedMonthLabel}</h2>
+                <p className="mt-2 max-w-xl text-sm leading-6 text-white/55">Plan, review and publish every piece of content from one clear workspace.</p>
+                <button
+                  type="button"
+                  onClick={() => setIsEditorOpen(true)}
+                  className="mt-5 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#1f2b20] shadow-[0_10px_24px_rgba(0,0,0,0.16)] transition-all hover:-translate-y-0.5 hover:bg-emerald-50"
+                >
+                  <Plus className="h-4 w-4" /> Add content
+                </button>
+              </div>
+              <div className="grid min-w-[440px] grid-cols-4 overflow-hidden rounded-2xl border border-white/10 bg-black/10">
+                {[
+                  ['Total', filteredPosts.length, 'text-white'],
+                  ['Needs review', monthNeedsReview, 'text-amber-300'],
+                  ['Approved', monthApproved, 'text-emerald-300'],
+                  ['Published', monthPublished, 'text-sky-300'],
+                ].map(([label, value, tone]) => (
+                  <div key={String(label)} className="border-r border-white/10 px-4 py-3 last:border-r-0">
+                    <p className={`text-2xl font-semibold ${tone}`}>{value}</p>
+                    <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-white/45">{label}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section className="calendar-command-bar mb-5 rounded-2xl border border-black/[0.07] bg-white p-3 shadow-[0_10px_35px_rgba(30,38,29,0.06)]">
           {/* Month Filter Tabs */}
-          <div className="flex gap-2 mb-4 overflow-x-auto">
+          <div className="flex items-center justify-between gap-5">
+          <div className="flex gap-1.5 overflow-x-auto rounded-xl bg-stone-100/80 p-1.5">
             {Array.from({ length: 6 }, (_, i) => {
               const date = new Date();
               date.setDate(1); // Set to 1st to avoid month overflow (e.g., Jan 31 -> Feb 31 = Mar 3)
@@ -2292,11 +2445,11 @@ export default function App() {
               return (
                 <button
                   key={`${year}-${date.getMonth()}`}
-                  onClick={() => setSelectedMonth(new Date(date))}
-                  className={`px-4 py-2 rounded-lg font-medium text-sm transition-all whitespace-nowrap ${
+                  onClick={() => runUiTransition(() => setSelectedMonth(new Date(date)))}
+                  className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-semibold transition-all ${
                     isSelected
-                      ? 'bg-brand-green text-white shadow-sm'
-                      : 'bg-white text-stone-600 border border-stone-300 hover:border-brand-green'
+                      ? 'bg-white text-brand-dark shadow-[0_5px_14px_rgba(34,40,32,0.10)]'
+                      : 'text-stone-500 hover:bg-white/70 hover:text-brand-dark'
                   }`}
                 >
                   {monthName} {year}
@@ -2306,34 +2459,40 @@ export default function App() {
           </div>
 
           {/* View Toggle Tabs */}
-          <div className="flex gap-2 mb-4">
+          <div className="flex shrink-0 gap-1 rounded-xl bg-stone-100/80 p-1.5">
             <button
-              onClick={() => setViewMode('table')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+              onClick={() => runUiTransition(() => setViewMode('table'))}
+              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-all ${
                 viewMode === 'table'
-                  ? 'bg-white text-brand-dark border-2 border-brand-dark shadow-sm'
-                  : 'bg-white text-stone-500 border border-stone-300 hover:border-stone-400'
+                  ? 'bg-brand-dark text-white shadow-sm'
+                  : 'text-stone-500 hover:bg-white hover:text-brand-dark'
               }`}
             >
               <Table2 className="w-4 h-4" />
-              Table View
+              Table
             </button>
             <button
-              onClick={() => setViewMode('calendar')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+              onClick={() => runUiTransition(() => setViewMode('calendar'))}
+              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-all ${
                 viewMode === 'calendar'
-                  ? 'bg-white text-brand-dark border-2 border-brand-dark shadow-sm'
-                  : 'bg-white text-stone-500 border border-stone-300 hover:border-stone-400'
+                  ? 'bg-brand-dark text-white shadow-sm'
+                  : 'text-stone-500 hover:bg-white hover:text-brand-dark'
               }`}
             >
               <Calendar className="w-4 h-4" />
-              Calendar View
+              Calendar
             </button>
           </div>
+          </div>
+          </section>
 
           {viewMode === 'table' ? (
             <>
-              <div className="mb-2 flex flex-wrap items-center justify-end gap-2">
+              <div className="mb-3 flex flex-wrap items-center gap-2 rounded-2xl border border-black/[0.06] bg-white px-4 py-3 shadow-[0_8px_28px_rgba(30,38,29,0.045)]">
+                <div className="mr-auto">
+                  <p className="text-sm font-semibold text-brand-dark">Content schedule</p>
+                  <p className="mt-0.5 text-xs text-stone-400">{filteredPosts.length} {filteredPosts.length === 1 ? 'item' : 'items'} in {selectedMonthLabel}</p>
+                </div>
                 <div>
                   <button
                     onClick={async () => {
@@ -2360,21 +2519,21 @@ export default function App() {
                         fetchPosts();
                       }
                     }}
-                    className="bg-brand-green hover:bg-emerald-800 text-white px-4 py-2 rounded-lg font-medium text-sm transition-all shadow-sm"
+                    className="rounded-xl bg-brand-green px-4 py-2.5 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(74,103,65,0.20)] transition-all hover:bg-emerald-800"
                   >
                     Approve All
                   </button>
                 </div>
 
                 <details className="relative">
-                  <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 shadow-sm transition-all hover:bg-stone-50 [&::-webkit-details-marker]:hidden">
+                  <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm font-semibold text-stone-600 transition-all hover:border-brand-green/30 hover:text-brand-dark [&::-webkit-details-marker]:hidden">
                     <Columns3 className="h-4 w-4" />
                     Columns
                     <span className="rounded-full bg-stone-100 px-1.5 py-0.5 text-[10px] font-bold text-stone-500">
                       {visibleTableColumnCount}/{TABLE_COLUMNS.length}
                     </span>
                   </summary>
-                  <div className="absolute right-0 z-30 mt-2 w-64 rounded-lg border border-stone-200 bg-white p-2 shadow-xl">
+                  <div role="dialog" aria-label="Table columns" className="absolute right-0 z-30 mt-2 w-64 rounded-2xl border border-stone-200 bg-white p-2 shadow-xl">
                     <div className="px-2 pb-2 pt-1 text-xs font-bold uppercase tracking-wider text-stone-400">
                       Show table columns
                     </div>
@@ -2410,7 +2569,7 @@ export default function App() {
                   {isMasterAccount && currentClient && isLateConfigured() && (
                     <button
                       onClick={handleOpenScheduleModal}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition-all shadow-sm flex items-center gap-2"
+                      className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-700"
                       title="Schedule approved posts to social media"
                     >
                       <Clock className="w-4 h-4" />
@@ -2458,7 +2617,7 @@ Heath`
                           window.open(`mailto:?subject=${subject}&body=${body}`, '_blank');
                         }
                       }}
-                      className="bg-stone-100 hover:bg-stone-200 text-stone-700 px-4 py-2 rounded-lg font-medium text-sm transition-all shadow-sm border border-stone-300 flex items-center gap-2"
+                      className="flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm font-semibold text-stone-600 transition-all hover:border-brand-green/30 hover:text-brand-dark"
                     >
                       <Mail className="w-4 h-4" />
                       Email
@@ -2468,23 +2627,23 @@ Heath`
                 </div>
               </div>
 
-              <div className="bg-white rounded-lg shadow-sm border border-stone-300 overflow-hidden">
-                <table className="w-full text-left border-collapse">
+              <div className="content-table-shell overflow-hidden rounded-2xl border border-black/[0.08] bg-white shadow-[0_18px_50px_rgba(30,38,29,0.08)]">
+                <table className="content-table w-full border-collapse text-left">
                 <thead>
-                    <tr className="bg-stone-50 border-b border-stone-300">
-                        {visibleTableColumns.date && <th className="sticky left-0 z-10 bg-stone-50 p-4 w-32 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Date</th>}
-                        {visibleTableColumns.creative && <th className="p-4 w-64 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Creative</th>}
-                        {visibleTableColumns.caption && <th className="p-4 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Caption & Hashtags</th>}
-                        {visibleTableColumns.approval && <th className="p-4 w-48 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Approval Status</th>}
-                        {visibleTableColumns.contentIdeas && <th className="p-4 w-64 text-xs font-bold text-stone-500 uppercase tracking-wider border-r border-stone-200">Content Ideas</th>}
-                        {visibleTableColumns.comments && <th className="p-4 w-64 text-xs font-bold text-stone-500 uppercase tracking-wider">Additional Comments</th>}
+                    <tr className="border-b border-stone-200 bg-[#f7f8f4]">
+                        {visibleTableColumns.date && <th className="sticky left-0 z-10 w-32 border-r border-stone-200 bg-[#f7f8f4] p-4 text-[10px] font-bold uppercase tracking-[0.16em] text-stone-500">Publish date</th>}
+                        {visibleTableColumns.creative && <th className="w-64 border-r border-stone-200 p-4 text-[10px] font-bold uppercase tracking-[0.16em] text-stone-500">Creative</th>}
+                        {visibleTableColumns.caption && <th className="border-r border-stone-200 p-4 text-[10px] font-bold uppercase tracking-[0.16em] text-stone-500">Caption</th>}
+                        {visibleTableColumns.approval && <th className="w-48 border-r border-stone-200 p-4 text-[10px] font-bold uppercase tracking-[0.16em] text-stone-500">Status</th>}
+                        {visibleTableColumns.contentIdeas && <th className="w-64 border-r border-stone-200 p-4 text-[10px] font-bold uppercase tracking-[0.16em] text-stone-500">Content idea</th>}
+                        {visibleTableColumns.comments && <th className="w-64 p-4 text-[10px] font-bold uppercase tracking-[0.16em] text-stone-500">Comments</th>}
                     </tr>
                 </thead>
-                <tbody className="divide-y divide-stone-200">
+                <tbody className="content-table-body divide-y divide-stone-200">
                     {loading && posts.length === 0 ? (
                         <tr><td colSpan={visibleTableColumnCount} className="p-8 text-center text-stone-400"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-2"/>Loading content...</td></tr>
                     ) : filteredPosts.map((post) => (
-                        <tr key={post.id} className={`group hover:bg-stone-50/50 transition-colors ${post.status === 'Client Idea' ? 'bg-blue-50' : 'bg-white'}`}>
+                        <tr key={post.id} className={`content-row group transition-colors ${post.status === 'Client Idea' ? 'bg-blue-50' : 'bg-white'}`}>
                             {/* Date Column */}
                             {visibleTableColumns.date && (
                             <td className={`sticky left-0 z-10 p-4 align-top border-r border-stone-200 ${post.status === 'Client Idea' ? 'bg-blue-50 group-hover:bg-blue-100/70' : 'bg-white group-hover:bg-stone-50/50'}`}>
@@ -2665,6 +2824,21 @@ Heath`
                                         <p className="mt-1 text-[10px] leading-4 text-amber-700">Stories support one image or video.</p>
                                       )}
                                     </div>
+
+                                    {isMasterAccount && (currentClient?.late_profile_ids?.length || 0) > 0 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenPlatformPicker(post)}
+                                        disabled={post.status === 'Posted'}
+                                        className="flex w-full items-center justify-between rounded-md border border-stone-300 bg-white px-3 py-2 text-left text-xs font-medium text-stone-700 transition-colors hover:border-blue-500 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                        aria-label={`Choose social platforms for ${post.title || post.date}`}
+                                      >
+                                        <span>Social platforms</span>
+                                        <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">
+                                          {post.targetProfileIds ? `${post.targetProfileIds.length} selected` : 'Choose'}
+                                        </span>
+                                      </button>
+                                    )}
 
                                     {/* Upload Button - Always visible below image */}
                                     <label className="flex items-center justify-center gap-2 px-3 py-2 border border-stone-300 rounded-md cursor-pointer hover:bg-stone-50 hover:border-brand-green transition-colors text-xs font-medium text-stone-600 hover:text-brand-green">
@@ -2886,6 +3060,7 @@ Heath`
           )}
         </div>
         )}
+          </div>
         </main>
       </div>
 
@@ -2914,26 +3089,33 @@ Heath`
 
       {/* Client Selector Modal for Master Account or Multi-Client Users */}
       {showClientSelector && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-8">
-            <div className="flex items-center gap-3 mb-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 sm:p-4">
+          <div
+            className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white p-5 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:p-8"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="client-selector-title"
+          >
+            <div className="mb-5 flex shrink-0 items-center gap-3 sm:mb-6">
               <Users className="w-8 h-8 text-brand-green" />
-              <h2 className="text-2xl font-serif font-bold text-brand-dark">Select Client</h2>
+              <h2 id="client-selector-title" className="text-2xl font-serif font-bold text-brand-dark">
+                Select Client
+              </h2>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid min-h-0 grid-cols-1 gap-3 overflow-y-auto overscroll-contain pr-2 sm:grid-cols-2 sm:gap-4">
               {(isMasterAccount ? allClients.filter(c => c.pin !== '1991') : userClients).map(client => (
                 <button
                   key={client.id}
                   onClick={() => selectClient(client)}
-                  className={`p-6 border-2 rounded-lg hover:border-brand-green hover:bg-brand-green/5 transition-all text-left group ${
+                  className={`group rounded-lg border-2 p-4 text-left transition-all hover:border-brand-green hover:bg-brand-green/5 sm:p-5 ${
                     currentClient?.id === client.id ? 'border-brand-green bg-brand-green/5' : 'border-stone-300'
                   }`}
                 >
                   <h3 className="font-bold text-lg text-brand-dark group-hover:text-brand-green transition-colors">
                     {client.name}
                   </h3>
-                  <p className="text-sm text-stone-600 mt-2">{client.brand_name}</p>
+                  <p className="mt-1 text-sm text-stone-600">{client.brand_name}</p>
                 </button>
               ))}
             </div>
@@ -3463,6 +3645,101 @@ Example:
         />
       )}
 
+      {/* Per-post Social Platform Picker */}
+      {platformPickerPostId && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setPlatformPickerPostId(null)}
+        >
+          <div
+            className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="platform-picker-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="border-b border-stone-200 p-6">
+              <h2 id="platform-picker-title" className="text-xl font-serif font-bold text-brand-dark">
+                Choose Social Platforms
+              </h2>
+              <p className="mt-1 text-sm text-stone-500">
+                This selection is saved to the post and used when it is approved or scheduled.
+              </p>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              {loadingPlatformPicker ? (
+                <div className="flex items-center justify-center py-10 text-sm text-stone-500">
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin text-blue-600" />
+                  Loading connected accounts...
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {platformPickerProfiles.map((profile) => {
+                    const post = posts.find(candidate => candidate.id === platformPickerPostId);
+                    const compatibility = post
+                      ? getProfileCompatibility(post, profile)
+                      : { compatible: false, reason: 'Post could not be found.' };
+                    const isSelected = platformPickerSelectedIds.includes(profile.id);
+                    return (
+                      <label
+                        key={profile.id}
+                        className={`flex items-start gap-3 rounded-lg border-2 p-3 transition-colors ${
+                          !compatibility.compatible
+                            ? 'cursor-not-allowed border-stone-200 bg-stone-100 opacity-65'
+                            : isSelected
+                              ? 'cursor-pointer border-blue-500 bg-blue-50'
+                              : 'cursor-pointer border-transparent bg-stone-50 hover:bg-stone-100'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          disabled={!compatibility.compatible}
+                          onChange={() => setPlatformPickerSelectedIds(current =>
+                            current.includes(profile.id)
+                              ? current.filter(id => id !== profile.id)
+                              : [...current, profile.id]
+                          )}
+                          className="mt-1 h-4 w-4 rounded border-stone-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-stone-800">
+                            {profile.username || profile.platform}
+                          </p>
+                          <p className="text-xs capitalize text-stone-500">{profile.platform}</p>
+                          {!compatibility.compatible && (
+                            <p className="mt-1 text-xs leading-4 text-amber-700">{compatibility.reason}</p>
+                          )}
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3 border-t border-stone-200 p-4">
+              <button
+                type="button"
+                onClick={() => setPlatformPickerPostId(null)}
+                className="flex-1 rounded-lg border border-stone-300 px-4 py-2 text-stone-700 hover:bg-stone-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSavePlatformPicker}
+                disabled={loadingPlatformPicker || savingPlatformPicker || platformPickerSelectedIds.length === 0}
+                className="flex flex-1 items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {savingPlatformPicker ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save Platforms'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Schedule Posts Modal */}
       {showScheduleModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowScheduleModal(false)}>
@@ -3479,7 +3756,7 @@ Example:
                 const withoutImages = approved.length - withImages.length;
                 return (
                   <>
-                    <p>Schedule <span className="font-bold text-blue-600">{approved.length}</span> approved posts to your connected social media accounts.</p>
+                    <p>Schedule <span className="font-bold text-blue-600">{approved.length}</span> approved posts to their saved social platforms.</p>
                     {withoutImages > 0 && (
                       <p className="text-amber-600 mt-1">
                         ⚠️ {withoutImages} post(s) have no images and will be skipped for Instagram.
@@ -3492,19 +3769,40 @@ Example:
 
             {/* Post Time Selection */}
             <div className="mb-4">
-              <label className="block text-sm font-medium text-stone-700 mb-2">Post Time (for each post's date)</label>
-              <input
-                type="time"
-                value={scheduleTime}
-                onChange={(e) => setScheduleTime(e.target.value)}
-                className="w-full px-3 py-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-              />
-              <p className="text-xs text-stone-500 mt-1">Posts will be scheduled at this time on their respective dates</p>
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                <input
+                  type="checkbox"
+                  checked={smartScheduling}
+                  onChange={(event) => setSmartScheduling(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-stone-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span>
+                  <span className="block text-sm font-semibold text-blue-900">Smart time spread</span>
+                  <span className="mt-1 block text-xs leading-5 text-blue-700">
+                    {learnedScheduleTimes.length
+                      ? 'Uses the strongest posting windows found in this client’s analytics.'
+                      : 'Spreads posts across varied morning, afternoon and evening times while enough performance history is collected.'}
+                  </span>
+                </span>
+              </label>
+              {!smartScheduling && (
+                <div className="mt-3">
+                  <label className="mb-2 block text-sm font-medium text-stone-700">Fixed post time</label>
+                  <input
+                    type="time"
+                    value={scheduleTime}
+                    onChange={(e) => setScheduleTime(e.target.value)}
+                    className="w-full rounded-lg border border-stone-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="mt-1 text-xs text-stone-500">Use this only when every post in the batch must go out at the same time.</p>
+                </div>
+              )}
             </div>
 
             {/* Profile Selection */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-stone-700 mb-2">Select Platforms</label>
+              <p className="mb-2 text-xs text-stone-500">These choices can narrow this batch, but each post will still use its saved platform selection.</p>
               {loadingProfiles ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="w-6 h-6 animate-spin text-blue-600" />

@@ -43,7 +43,7 @@ export function ClientBilling({ client, pin }: ClientBillingProps) {
         <p className="mt-2 max-w-2xl text-stone-500">Manage invoices, payment details, and your subscription without contacting Seam Media.</p>
       </div>
 
-      <section className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+      <section className="ui-surface rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <div className="mb-4 inline-flex rounded-xl bg-emerald-50 p-3 text-brand-green"><CreditCard className="h-6 w-6" /></div>

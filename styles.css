@@ -1,0 +1,260 @@
+:root {
+  color-scheme: light;
+  --ui-ink: #20241f;
+  --ui-muted: #706f69;
+  --ui-canvas: #eef1eb;
+  --ui-surface: rgba(255, 255, 255, 0.94);
+  --ui-line: rgba(41, 43, 38, 0.11);
+  --ui-green: #4a6741;
+  --ui-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --ui-shadow-sm: 0 1px 2px rgba(33, 38, 31, 0.03), 0 8px 24px rgba(33, 38, 31, 0.035);
+  --ui-shadow-lg: 0 24px 64px rgba(25, 30, 23, 0.16), 0 4px 16px rgba(25, 30, 23, 0.08);
+}
+
+html {
+  background: var(--ui-canvas);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  color: var(--ui-ink);
+  background:
+    radial-gradient(circle at 10% -15%, rgba(128, 157, 119, 0.2), transparent 34rem),
+    linear-gradient(180deg, #f8f9f5 0, var(--ui-canvas) 24rem);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.app-header {
+  box-shadow: 0 1px 0 rgba(31, 43, 32, 0.04), 0 10px 30px rgba(31, 43, 32, 0.035);
+}
+
+.content-workspace {
+  background-image:
+    linear-gradient(rgba(71, 91, 67, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(71, 91, 67, 0.035) 1px, transparent 1px);
+  background-size: 32px 32px;
+  background-position: -1px -1px;
+}
+
+.content-hero,
+.home-hero {
+  position: relative;
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 83% 12%, rgba(162, 201, 150, 0.2), transparent 23rem),
+    radial-gradient(circle at 4% 120%, rgba(97, 132, 87, 0.26), transparent 25rem),
+    #1f2b20 !important;
+}
+
+.content-hero::after,
+.home-hero::after {
+  position: absolute;
+  z-index: -1;
+  top: -7rem;
+  right: 18%;
+  width: 18rem;
+  height: 18rem;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 999px;
+  content: '';
+}
+
+.calendar-command-bar {
+  position: sticky;
+  top: 84px;
+  z-index: 20;
+}
+
+.content-table-shell {
+  transition: box-shadow 280ms var(--ui-ease), transform 280ms var(--ui-ease);
+}
+
+.content-table thead {
+  position: sticky;
+  top: 151px;
+  z-index: 12;
+  box-shadow: 0 1px 0 rgba(31, 43, 32, 0.09);
+}
+
+.content-row {
+  animation: ui-row-in 460ms var(--ui-ease) both;
+}
+
+.content-row:nth-child(2) { animation-delay: 40ms; }
+.content-row:nth-child(3) { animation-delay: 80ms; }
+.content-row:nth-child(4) { animation-delay: 120ms; }
+.content-row:nth-child(5) { animation-delay: 160ms; }
+.content-row:nth-child(n + 6) { animation-delay: 200ms; }
+
+.content-row:hover {
+  background: #fafbf8;
+  box-shadow: inset 4px 0 0 var(--ui-green);
+}
+
+.content-row td {
+  border-color: rgba(41, 43, 38, 0.085) !important;
+}
+
+.content-row textarea,
+.content-row input,
+.content-row select {
+  border-radius: 10px !important;
+}
+
+.content-row textarea {
+  border-color: rgba(41, 43, 38, 0.1) !important;
+  background: #f8f9f6 !important;
+  line-height: 1.55;
+}
+
+.content-row textarea:hover,
+.content-row textarea:focus {
+  border-color: rgba(74, 103, 65, 0.34) !important;
+  background: #fff !important;
+  box-shadow: 0 0 0 3px rgba(74, 103, 65, 0.08);
+}
+
+button,
+a,
+summary,
+input,
+select,
+textarea {
+  transition-duration: 180ms;
+  transition-timing-function: var(--ui-ease);
+}
+
+button:not(:disabled),
+summary,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:not(:disabled):active,
+summary:active {
+  transform: scale(0.975);
+}
+
+:where(button, a, summary, input, select, textarea):focus-visible {
+  outline: 3px solid rgba(74, 103, 65, 0.2);
+  outline-offset: 2px;
+}
+
+::selection {
+  color: #fff;
+  background: var(--ui-green);
+}
+
+/* Shared surfaces stay quiet until interaction gives them emphasis. */
+.ui-surface {
+  border-color: var(--ui-line) !important;
+  background: var(--ui-surface) !important;
+  box-shadow: var(--ui-shadow-sm) !important;
+  transition: transform 220ms var(--ui-ease), box-shadow 220ms var(--ui-ease), border-color 220ms var(--ui-ease);
+}
+
+.ui-surface-interactive:hover {
+  transform: translateY(-2px);
+  border-color: rgba(74, 103, 65, 0.2) !important;
+  box-shadow: 0 16px 34px rgba(33, 38, 31, 0.075) !important;
+}
+
+.ui-page {
+  animation: ui-page-in 420ms var(--ui-ease) both;
+  view-transition-name: portal-content;
+}
+
+.ui-stagger > * {
+  animation: ui-rise-in 440ms var(--ui-ease) both;
+}
+
+.ui-stagger > *:nth-child(2) { animation-delay: 45ms; }
+.ui-stagger > *:nth-child(3) { animation-delay: 90ms; }
+.ui-stagger > *:nth-child(4) { animation-delay: 135ms; }
+.ui-stagger > *:nth-child(5) { animation-delay: 180ms; }
+
+/* Existing overlays gain consistent entrance motion without changing their logic. */
+.fixed.inset-0[class*="bg-black"] {
+  animation: ui-backdrop-in 180ms ease-out both;
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+
+.fixed.inset-0[class*="bg-black"] > :first-child {
+  animation: ui-dialog-in 300ms var(--ui-ease) both;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 24px !important;
+  box-shadow: var(--ui-shadow-lg);
+}
+
+[role="dialog"] {
+  view-transition-name: ui-dialog;
+}
+
+@keyframes ui-page-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ui-rise-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ui-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes ui-dialog-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes ui-row-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+::view-transition-old(portal-content) {
+  animation: 170ms ease-in both ui-page-out;
+}
+
+::view-transition-new(portal-content) {
+  animation: 360ms var(--ui-ease) 40ms both ui-page-in;
+}
+
+::view-transition-old(ui-dialog) {
+  animation: 160ms ease-in both ui-dialog-out;
+}
+
+::view-transition-new(ui-dialog) {
+  animation: 280ms var(--ui-ease) both ui-dialog-in;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+@keyframes ui-page-out {
+  to { opacity: 0; transform: translateY(-5px); }
+}
+
+@keyframes ui-dialog-out {
+  to { opacity: 0; transform: translateY(6px) scale(0.985); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

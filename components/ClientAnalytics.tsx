@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BarChart3, CalendarCheck, CheckCircle2, CircleAlert, Lightbulb, Send } from 'lucide-react';
+import { BarChart3, CalendarCheck, CheckCircle2, CircleAlert, Eye, Lightbulb, Loader2, MousePointerClick, Send } from 'lucide-react';
 import { Post } from '../types';
 
 interface ClientAnalyticsProps {
@@ -9,26 +9,36 @@ interface ClientAnalyticsProps {
 }
 
 type IntelligenceSummary = {
-  analytics: { sampledPosts: number; impressions: number; reach: number; engagements: number; clicks: number; views: number };
+  analytics: {
+    hasData: boolean;
+    provider: 'zernio_api' | 'zernio_snapshots' | 'mock';
+    periodStart: string;
+    periodEnd: string;
+    sampledPosts: number;
+    metrics: Array<{ key: string; label: string; value: number; previousValue: number | null; changePercent: number | null }>;
+    platforms: Array<{ platform: string; posts: number; metrics: Array<{ key: string; label: string; value: number; changePercent: number | null }> }>;
+    dataNote?: string;
+    liveAnalyticsError?: string | null;
+  };
   learnings: Array<{ statement: string; recommendation: string; confidence: number; sample_size: number }>;
 };
 
 export function ClientAnalytics({ posts, clientId, pin }: ClientAnalyticsProps) {
   const [intelligence, setIntelligence] = useState<IntelligenceSummary | null>(null);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(true);
 
   useEffect(() => {
     let active = true;
     fetch(`/api/content-context?clientId=${encodeURIComponent(clientId)}`, { headers: { 'x-portal-pin': pin } })
       .then((response) => response.ok ? response.json() : null)
       .then((value) => { if (active && value) setIntelligence(value); })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => { if (active) setLoadingAnalytics(false); });
     return () => { active = false; };
   }, [clientId, pin]);
   const published = posts.filter((post) => post.status === 'Posted').length;
   const approved = posts.filter((post) => post.status === 'Approved').length;
   const awaitingApproval = posts.filter((post) => post.status === 'For Approval').length;
-  const reviewed = published + approved;
-  const approvalRate = posts.length ? Math.round((reviewed / posts.length) * 100) : 0;
   const withVideo = posts.filter((post) => post.mediaType === 'video').length;
   const withCarousel = posts.filter((post) => (post.imageUrls?.length || 0) > 1).length;
 
@@ -38,37 +48,93 @@ export function ClientAnalytics({ posts, clientId, pin }: ClientAnalyticsProps) 
     ['Needs approval', awaitingApproval, 'bg-amber-500'],
     ['Draft or revision', Math.max(0, posts.length - published - approved - awaitingApproval), 'bg-stone-400'],
   ] as const;
+  const iconFor = (key: string) => key === 'reach' ? BarChart3
+    : key === 'impressions' ? Send
+      : key === 'clicks' ? MousePointerClick
+        : key === 'views' ? Eye
+          : key === 'posts' ? CheckCircle2
+            : CircleAlert;
+  const metricTones: Record<string, string> = {
+    reach: 'bg-blue-50 text-blue-700',
+    impressions: 'bg-emerald-50 text-emerald-700',
+    engagements: 'bg-amber-50 text-amber-700',
+    clicks: 'bg-cyan-50 text-cyan-700',
+    views: 'bg-fuchsia-50 text-fuchsia-700',
+    posts: 'bg-violet-50 text-violet-700',
+  };
+  const headlineMetrics = intelligence?.analytics.metrics.filter((metric) =>
+    ['reach', 'impressions', 'engagements', 'clicks', 'views', 'posts'].includes(metric.key)
+  ) || [];
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6 p-5 sm:p-7 lg:p-8">
       <div>
-        <p className="text-sm font-medium text-brand-green">Max analytics</p>
+        <p className="text-sm font-medium text-brand-green">Performance analytics</p>
         <h2 className="mt-1 font-serif text-3xl font-bold text-brand-dark">Content performance</h2>
-        <p className="mt-2 max-w-2xl text-stone-500">A live view of your content workflow, approvals and publishing activity.</p>
+        <p className="mt-2 max-w-2xl text-stone-500">
+          {intelligence?.analytics.periodStart
+            ? `Live connected-platform results for ${intelligence.analytics.periodStart} to ${intelligence.analytics.periodEnd}.`
+            : 'Live connected-platform results for the last 30 completed days.'}
+        </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {(intelligence?.analytics.sampledPosts ? [
-          { label: 'Reach', value: intelligence.analytics.reach.toLocaleString(), icon: BarChart3, tone: 'bg-blue-50 text-blue-700' },
-          { label: 'Impressions', value: intelligence.analytics.impressions.toLocaleString(), icon: Send, tone: 'bg-emerald-50 text-emerald-700' },
-          { label: 'Engagements', value: intelligence.analytics.engagements.toLocaleString(), icon: CircleAlert, tone: 'bg-amber-50 text-amber-700' },
-          { label: 'Posts sampled', value: intelligence.analytics.sampledPosts, icon: CheckCircle2, tone: 'bg-violet-50 text-violet-700' },
-        ] : [
-          { label: 'Total content', value: posts.length, icon: BarChart3, tone: 'bg-blue-50 text-blue-700' },
-          { label: 'Published', value: published, icon: Send, tone: 'bg-emerald-50 text-emerald-700' },
-          { label: 'Needs approval', value: awaitingApproval, icon: CircleAlert, tone: 'bg-amber-50 text-amber-700' },
-          { label: 'Approval progress', value: `${approvalRate}%`, icon: CheckCircle2, tone: 'bg-violet-50 text-violet-700' },
-        ]).map(({ label, value, icon: Icon, tone }) => (
-          <section key={label} className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-            <div className={`mb-4 inline-flex rounded-xl p-2.5 ${tone}`}><Icon className="h-5 w-5" /></div>
-            <p className="text-3xl font-semibold text-brand-dark">{value}</p>
-            <p className="mt-1 text-sm text-stone-500">{label}</p>
+      {loadingAnalytics ? (
+        <div className="ui-surface flex items-center justify-center rounded-2xl border border-stone-200 bg-white py-16 text-sm text-stone-500 shadow-sm">
+          <Loader2 className="mr-2 h-5 w-5 animate-spin text-brand-green" /> Loading live analytics...
+        </div>
+      ) : intelligence?.analytics.hasData ? (
+        <>
+          <div className="ui-stagger grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {headlineMetrics.map((metric) => {
+              const Icon = iconFor(metric.key);
+              return (
+                <section key={metric.key} className="ui-surface ui-surface-interactive rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+                  <div className={`mb-4 inline-flex rounded-xl p-2.5 ${metricTones[metric.key] || 'bg-stone-50 text-stone-700'}`}><Icon className="h-5 w-5" /></div>
+                  <p className="text-3xl font-semibold text-brand-dark">{metric.value.toLocaleString()}</p>
+                  <div className="mt-1 flex items-center justify-between gap-2 text-sm">
+                    <span className="text-stone-500">{metric.label}</span>
+                    {metric.changePercent !== null && (
+                      <span className={metric.changePercent > 0 ? 'text-emerald-700' : metric.changePercent < 0 ? 'text-red-700' : 'text-stone-500'}>
+                        {metric.changePercent > 0 ? '+' : ''}{metric.changePercent}%
+                      </span>
+                    )}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+
+          <section className="ui-surface rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+            <h3 className="text-lg font-semibold text-brand-dark">Results by platform</h3>
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              {intelligence.analytics.platforms.filter((platform) => platform.posts > 0).map((platform) => (
+                <div key={platform.platform} className="rounded-xl bg-stone-50 p-4">
+                  <div className="flex items-center justify-between">
+                    <p className="font-semibold capitalize text-brand-dark">{platform.platform}</p>
+                    <span className="text-xs text-stone-500">{platform.posts} posts</span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-3">
+                    {platform.metrics.map((metric) => (
+                      <div key={metric.key}>
+                        <p className="text-xs text-stone-500">{metric.label}</p>
+                        <p className="mt-0.5 font-semibold text-brand-dark">{metric.value.toLocaleString()}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           </section>
-        ))}
-      </div>
+        </>
+      ) : (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-900">
+          <p className="font-semibold">No connected-platform results are available for this 30-day period yet.</p>
+          <p className="mt-2 text-sm leading-6">{intelligence?.analytics.dataNote || 'Analytics will appear here after connected accounts return performance data.'}</p>
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
-        <section className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+        <section className="ui-surface rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
           <div className="flex items-center gap-3"><CalendarCheck className="h-5 w-5 text-brand-green" /><h3 className="text-lg font-semibold text-brand-dark">Content status</h3></div>
           <div className="mt-6 space-y-5">
             {statusRows.map(([label, count, colour]) => {
@@ -83,19 +149,19 @@ export function ClientAnalytics({ posts, clientId, pin }: ClientAnalyticsProps) 
           </div>
         </section>
 
-        <section className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+        <section className="ui-surface rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
           <h3 className="text-lg font-semibold text-brand-dark">Content mix</h3>
           <div className="mt-6 space-y-4">
             <Metric label="Videos" value={withVideo} />
             <Metric label="Carousels" value={withCarousel} />
             <Metric label="Images and other" value={Math.max(0, posts.length - withVideo - withCarousel)} />
           </div>
-          <p className="mt-6 rounded-xl bg-stone-50 p-4 text-sm leading-6 text-stone-500">Audience reach and engagement will populate as connected social channels provide performance data.</p>
+          <p className="mt-6 rounded-xl bg-stone-50 p-4 text-sm leading-6 text-stone-500">The learning loop uses the live performance above to improve future format, timing and content recommendations.</p>
         </section>
       </div>
 
       {intelligence?.learnings?.length ? (
-        <section className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+        <section className="ui-surface rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
           <div className="flex items-center gap-3"><Lightbulb className="h-5 w-5 text-brand-green" /><h3 className="text-lg font-semibold text-brand-dark">What the learning loop is applying</h3></div>
           <div className="mt-5 grid gap-3 md:grid-cols-2">
             {intelligence.learnings.slice(0, 6).map((learning, index) => (

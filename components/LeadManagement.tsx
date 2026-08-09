@@ -9,27 +9,28 @@ import {
   Edit3,
   Filter,
   Flame,
+  HeartPulse,
   Loader2,
   Megaphone,
   Plus,
   RefreshCw,
   Search,
-  Sparkles,
   Target,
   TrendingUp,
   UserRound,
   Users,
   X,
 } from 'lucide-react';
+import { CurrentClients } from './lead-management/CurrentClients';
 import { LeadModal } from './lead-management/LeadModal';
-import { OutreachStudio } from './lead-management/OutreachStudio';
 import {
+  AgencyClientHealthUpdate,
+  AgencyCurrentClient,
   AgencyLead,
   AgencyLeadStage,
   AgencyMarketingPeriod,
   LEAD_SOURCES,
   LEAD_STAGES,
-  OutreachDraft,
   STAGE_STYLES,
 } from './lead-management/types';
 
@@ -37,7 +38,7 @@ interface LeadManagementProps {
   pin: string;
 }
 
-type LeadTab = 'overview' | 'leads' | 'outreach' | 'performance';
+type LeadTab = 'overview' | 'leads' | 'clients' | 'performance';
 
 const LOST_STAGES: AgencyLeadStage[] = ['not_interested', 'no_response', 'not_qualified'];
 const WARM_STAGES: AgencyLeadStage[] = ['warm', 'interested', 'call_booked', 'proposal_sent'];
@@ -158,7 +159,7 @@ const defaultMarketingPeriod = (periodStart = INITIAL_WINDOW_START, periodEnd = 
 export function LeadManagement({ pin }: LeadManagementProps) {
   const [leads, setLeads] = useState<AgencyLead[]>([]);
   const [periods, setPeriods] = useState<AgencyMarketingPeriod[]>([]);
-  const [outreachDrafts, setOutreachDrafts] = useState<OutreachDraft[]>([]);
+  const [currentClients, setCurrentClients] = useState<AgencyCurrentClient[]>([]);
   const [tab, setTab] = useState<LeadTab>('overview');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -194,18 +195,13 @@ export function LeadManagement({ pin }: LeadManagementProps) {
       const result = await request('GET');
       setLeads(result.leads || []);
       setPeriods(result.periods || []);
-      setOutreachDrafts(result.outreachDrafts || []);
+      setCurrentClients(result.currentClients || []);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Lead management is unavailable.');
     } finally {
       if (!silent) setLoading(false);
     }
   }, [request]);
-
-  const refreshDataSilently = useCallback(
-    () => fetchData({ silent: true }),
-    [fetchData],
-  );
 
   useEffect(() => { void fetchData(); }, [fetchData]);
 
@@ -219,6 +215,21 @@ export function LeadManagement({ pin }: LeadManagementProps) {
       await fetchData();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'The lead could not be saved.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveClientHealth = async (client: AgencyClientHealthUpdate) => {
+    setSaving(true);
+    setError('');
+    try {
+      await request('POST', { action: 'saveClientHealth', client });
+      await fetchData({ silent: true });
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : 'The client health review could not be saved.';
+      setError(message);
+      throw caught;
     } finally {
       setSaving(false);
     }
@@ -384,6 +395,10 @@ export function LeadManagement({ pin }: LeadManagementProps) {
   const windowConversions = windowPeriods.reduce((sum, period) => sum + Number(period.conversions || 0), 0);
   const windowRevenue = windowPeriods.reduce((sum, period) => sum + Number(period.conversion_revenue || 0), 0);
   const windowLifetimeRevenue = windowPeriods.reduce((sum, period) => sum + Number(period.lifetime_revenue || 0), 0);
+  const metaWindowPeriods = windowPeriods.filter((period) => period.source === 'meta_ads');
+  const metaSpend = metaWindowPeriods.reduce((sum, period) => sum + Number(period.spend || 0), 0);
+  const metaConversions = metaWindowPeriods.reduce((sum, period) => sum + Number(period.conversions || 0), 0);
+  const metaRevenue = metaWindowPeriods.reduce((sum, period) => sum + Number(period.conversion_revenue || 0), 0);
 
   const movePerformanceWindow = (amount: number) => {
     setPerformanceWindow((current) => ({
@@ -449,7 +464,7 @@ export function LeadManagement({ pin }: LeadManagementProps) {
         {([
           ['overview', 'Overview', BarChart3],
           ['leads', 'Lead pipeline', Users],
-          ['outreach', 'Outreach Studio', Sparkles],
+          ['clients', 'Current clients', HeartPulse],
           ['performance', 'Ad performance', Megaphone],
         ] as Array<[LeadTab, string, typeof Users]>).map(([value, label, Icon]) => (
           <button key={value} type="button" onClick={() => setTab(value)} className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors sm:flex-none ${tab === value ? 'bg-brand-green text-white' : 'text-stone-500 hover:bg-stone-50 hover:text-brand-dark'}`}>
@@ -593,6 +608,12 @@ export function LeadManagement({ pin }: LeadManagementProps) {
         </div>
       )}
 
+      {tab === 'clients' && (
+        <div className="mt-6">
+          <CurrentClients clients={currentClients} saving={saving} onSave={saveClientHealth} />
+        </div>
+      )}
+
       {tab === 'performance' && (
         <div className="mt-6 space-y-6">
           <section className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
@@ -610,9 +631,10 @@ export function LeadManagement({ pin }: LeadManagementProps) {
             </div>
           </section>
 
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
             <MetricCard label="Blended cost per lead" value={cost(windowSpend, windowLeads)} detail={`${windowLeads.toLocaleString()} paid and organic leads against ${money(windowSpend)} paid spend`} icon={DollarSign} />
             <MetricCard label="Blended cost per conversion" value={cost(windowSpend, windowConversions)} detail={`${windowConversions.toLocaleString()} conversions across paid and organic activity`} icon={Target} tone="purple" />
+            <MetricCard label="Blended Facebook ad ROAS" value={ratio(metaRevenue, metaSpend)} detail={`${metaConversions.toLocaleString()} Meta conversions generating ${money(metaRevenue)} against ${money(metaSpend)} Meta spend`} icon={Megaphone} tone="purple" />
             <MetricCard label="Blended revenue ROAS" value={ratio(windowRevenue, windowSpend)} detail={`${money(windowRevenue)} initial revenue against paid spend`} icon={TrendingUp} tone="blue" />
             <MetricCard label="Lifetime ROAS" value={ratio(windowLifetimeRevenue, windowSpend)} detail={`${money(windowLifetimeRevenue)} customer lifetime revenue`} icon={BarChart3} tone="orange" />
           </div>
@@ -625,14 +647,6 @@ export function LeadManagement({ pin }: LeadManagementProps) {
             {windowPeriods.length === 0 && <div className="px-6 py-16 text-center"><Megaphone className="mx-auto h-9 w-9 text-stone-300" /><p className="mt-3 font-semibold text-brand-dark">No acquisition stats for this window</p><p className="mt-1 text-sm text-stone-500">Add paid or organic acquisition totals when they are ready.</p></div>}
           </section>
         </div>
-      )}
-
-      {tab === 'outreach' && (
-        <OutreachStudio
-          pin={pin}
-          drafts={outreachDrafts}
-          onChanged={refreshDataSilently}
-        />
       )}
 
       <LeadModal lead={selectedLead} open={leadModalOpen} saving={saving} onClose={() => { setLeadModalOpen(false); setSelectedLead(null); }} onSave={saveLead} />

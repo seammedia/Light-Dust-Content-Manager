@@ -3,5 +3,10 @@ scripts/
 tmp/
 .claude/
 codex-skills/
+/assets/
+/outputs/
+/exports/
+/outreach-assets/
+/outreach_assets/
 *.sql
 *.md

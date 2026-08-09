@@ -16,7 +16,7 @@ export function ClientSocialInbox({ onConnectAccounts }: { onConnectAccounts: ()
         <p className="mt-2 text-sm text-stone-500">Bring messages, comments and mentions from connected social accounts into one place.</p>
       </div>
 
-      <div className="grid min-h-[32rem] overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm md:grid-cols-[14rem_1fr]">
+      <div className="ui-surface grid min-h-[32rem] overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm md:grid-cols-[14rem_1fr]">
         <nav aria-label="Social inbox filters" className="border-b border-stone-200 bg-stone-50/70 p-3 md:border-b-0 md:border-r">
           <p className="px-3 pb-2 pt-1 text-[10px] font-bold uppercase tracking-[0.16em] text-stone-400">Inbox</p>
           {inboxFilters.map(({ label, icon: Icon }, index) => (

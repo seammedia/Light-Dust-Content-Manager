@@ -19,6 +19,13 @@ interface WeeklyStatusInfo {
   icon: React.ReactNode;
 }
 
+// These clients have a flexible posting cadence, so keep them visible without
+// including them in the urgency-based ordering used for the remaining clients.
+const FLEXIBLE_CADENCE_CLIENTS = ['Krystal Perkins', 'Mascot Kings Football Club'];
+
+const getFlexibleCadenceRank = (client: Client): number =>
+  FLEXIBLE_CADENCE_CLIENTS.findIndex(name => name.toLowerCase() === client.name.trim().toLowerCase());
+
 // Get Monday of the week containing a date
 const getMonday = (date: Date): Date => {
   const d = new Date(date);
@@ -246,6 +253,19 @@ export function ClientManagement({ clients, onClientSelect }: ClientManagementPr
   };
 
   const displayClients = [...filteredClients].sort((a, b) => {
+    const aFlexibleRank = getFlexibleCadenceRank(a);
+    const bFlexibleRank = getFlexibleCadenceRank(b);
+    const aHasFlexibleCadence = aFlexibleRank !== -1;
+    const bHasFlexibleCadence = bFlexibleRank !== -1;
+
+    // Flexible-cadence clients are always pinned above urgency-ranked clients.
+    if (aHasFlexibleCadence || bHasFlexibleCadence) {
+      if (aHasFlexibleCadence && bHasFlexibleCadence) {
+        return aFlexibleRank - bFlexibleRank;
+      }
+      return aHasFlexibleCadence ? -1 : 1;
+    }
+
     const aStatus = getWeeklyStatusInfo(allPosts[a.id] || [], today);
     const bStatus = getWeeklyStatusInfo(allPosts[b.id] || [], today);
     const priorityDiff = statusPriority[aStatus.type] - statusPriority[bStatus.type];
@@ -361,6 +381,11 @@ export function ClientManagement({ clients, onClientSelect }: ClientManagementPr
               </tr>
             ) : (
               displayClients.map((client) => {
+                const hasFlexibleCadence = getFlexibleCadenceRank(client) !== -1;
+                const highlightedCellClasses = hasFlexibleCadence
+                  ? 'bg-emerald-50 border-y border-emerald-300 shadow-[inset_0_8px_14px_-14px_rgba(5,150,105,0.8),inset_0_-8px_14px_-14px_rgba(5,150,105,0.8)]'
+                  : '';
+
                 // Get initials for avatar
                 const initials = client.name
                   .split(' ')
@@ -383,8 +408,8 @@ export function ClientManagement({ clients, onClientSelect }: ClientManagementPr
                 const postCount = clientPosts.length;
 
                 return (
-                  <tr key={client.id} className="border-b border-stone-100 hover:bg-stone-50/50">
-                    <td className="py-4 px-6">
+                  <tr key={client.id} className={`border-b border-stone-100 ${hasFlexibleCadence ? '' : 'hover:bg-stone-50/50'}`}>
+                    <td className={`py-4 px-6 ${highlightedCellClasses} ${hasFlexibleCadence ? 'border-l rounded-l-xl' : ''}`}>
                       <button
                         onClick={() => onClientSelect(client)}
                         className="flex items-center gap-3 text-left hover:opacity-80 transition-opacity group"
@@ -402,10 +427,10 @@ export function ClientManagement({ clients, onClientSelect }: ClientManagementPr
                         </div>
                       </button>
                     </td>
-                    <td className="py-4 px-4">
+                    <td className={`py-4 px-4 ${highlightedCellClasses}`}>
                       {/* Empty cell - days are just for reference in header */}
                     </td>
-                    <td className="py-4 px-4">
+                    <td className={`py-4 px-4 ${highlightedCellClasses} ${hasFlexibleCadence ? 'border-r rounded-r-xl' : ''}`}>
                       <div
                         className={`flex items-center justify-center gap-3 py-3 px-6 rounded-lg ${statusInfo.bgColor} ${statusInfo.textColor} transition-all hover:opacity-90 cursor-pointer`}
                         title={`${postCount} post(s) this week`}

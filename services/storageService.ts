@@ -10,6 +10,8 @@ const VIDEO_MIME_TYPES = ['video/mp4', 'video/quicktime', 'video/webm', 'video/x
 // Max file sizes (in bytes)
 const MAX_IMAGE_SIZE = 8 * 1024 * 1024; // 8MB
 const MAX_VIDEO_SIZE = 500 * 1024 * 1024; // 500MB (reasonable limit for web upload)
+const MAX_BRAND_LOGO_SIZE = 5 * 1024 * 1024;
+const BRAND_LOGO_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']);
 
 // Instagram aspect ratio requirements
 const MIN_ASPECT_RATIO = 0.75; // 4:5 portrait
@@ -64,6 +66,43 @@ export const validateFileSize = (file: File, mediaType: MediaType): { valid: boo
     };
   }
   return { valid: true };
+};
+
+/**
+ * Upload a brand logo without cropping, resizing or format conversion.
+ * Brand assets must retain their original dimensions and transparency.
+ */
+export const uploadBrandLogo = async (file: File, clientId: string): Promise<string> => {
+  if (!BRAND_LOGO_MIME_TYPES.has(file.type)) {
+    throw new Error('Please choose a PNG, JPG, WebP or SVG logo.');
+  }
+  if (file.size > MAX_BRAND_LOGO_SIZE) {
+    throw new Error('Please choose a logo smaller than 5 MB.');
+  }
+
+  const extensionByMimeType: Record<string, string> = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/webp': 'webp',
+    'image/svg+xml': 'svg',
+  };
+  const extension = extensionByMimeType[file.type];
+  const fileName = `${clientId}/brand-logo-${Date.now()}.${extension}`;
+  const { error } = await supabase.storage
+    .from(BUCKET_NAME)
+    .upload(fileName, file, {
+      cacheControl: '3600',
+      contentType: file.type,
+      upsert: true,
+    });
+
+  if (error) {
+    console.error('Brand logo upload error:', error);
+    throw new Error(`The logo could not be uploaded: ${error.message}`);
+  }
+
+  const { data } = supabase.storage.from(BUCKET_NAME).getPublicUrl(fileName);
+  return data.publicUrl;
 };
 
 /**

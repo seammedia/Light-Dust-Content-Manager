@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
-import { authenticatePortalRequest, cleanText, kickPortalAutomation } from '../server/portal.js';
+import { authenticatePortalRequest, cleanText, isPortalEmailNotificationsEnabled, kickPortalAutomation } from '../server/portal.js';
 import { agencyLeadsHandler } from '../server/agencyLeads.js';
 
 export const maxDuration = 300;
@@ -120,7 +120,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  if (process.env.RESEND_API_KEY && !conversationId) {
+  if (isPortalEmailNotificationsEnabled() && process.env.RESEND_API_KEY && !conversationId) {
     await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },

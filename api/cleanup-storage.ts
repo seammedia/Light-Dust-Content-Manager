@@ -17,12 +17,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  const bearer = String(req.headers.authorization || '').match(/^Bearer\s+(.+)$/i)?.[1];
+  if (!process.env.CRON_SECRET || bearer !== process.env.CRON_SECRET) {
+    return res.status(401).json({ error: 'Unauthorised' });
+  }
+
   try {
     const { createClient } = await import('@supabase/supabase-js');
-    const supabase = createClient(
-      process.env.VITE_SUPABASE_URL!,
-      process.env.VITE_SUPABASE_ANON_KEY!
-    );
+    const supabaseUrl = process.env.VITE_SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!supabaseUrl || !serviceRoleKey) {
+      return res.status(500).json({ error: 'Cleanup storage is not configured' });
+    }
+    const supabase = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
 
     // Calculate the cutoff date (60 days ago)
     const cutoffDate = new Date();
@@ -31,10 +40,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Find posts that are "Posted" and older than 60 days with image URLs
     const { data: oldPosts, error: fetchError } = await supabase
       .from('posts')
-      .select('id, imageUrl, date, status')
+      .select('id, image_url, date, status')
       .eq('status', 'Posted')
       .lt('date', cutoffDate.toISOString().split('T')[0])
-      .not('imageUrl', 'is', null);
+      .not('image_url', 'is', null);
 
     if (fetchError) {
       console.error('Error fetching old posts:', fetchError);
@@ -53,14 +62,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     for (const post of oldPosts) {
       // Only process Supabase Storage URLs
-      if (!post.imageUrl || !post.imageUrl.includes('supabase')) {
+      if (!post.image_url || !post.image_url.includes('supabase')) {
         continue;
       }
 
       try {
         // Extract the file path from the URL
         // URL format: https://xxx.supabase.co/storage/v1/object/public/post-images/clientId/filename.jpg
-        const urlParts = post.imageUrl.split(`/storage/v1/object/public/${BUCKET_NAME}/`);
+        const urlParts = post.image_url.split(`/storage/v1/object/public/${BUCKET_NAME}/`);
         if (urlParts.length !== 2) {
           continue;
         }
@@ -78,10 +87,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         } else {
           deletedCount++;
 
-          // Clear the imageUrl from the post (optional - keeps record clean)
+          // Clear the image URL from the post (optional - keeps record clean)
           await supabase
             .from('posts')
-            .update({ imageUrl: null })
+            .update({ image_url: null })
             .eq('id', post.id);
         }
       } catch (error) {

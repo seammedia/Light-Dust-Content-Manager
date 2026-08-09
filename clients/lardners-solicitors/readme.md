@@ -158,3 +158,52 @@
 - Offers free initial consultation - key CTA
 - Website has "Book Consultation" as primary call-to-action
 - Client testimonials feature 5-star reviews emphasizing thoughtfulness, guidance, and great outcomes
+
+## Email Communication Style (for Andrea)
+- Keep it concise and professional
+- Use "Hope you're well!" as opener
+- Present metrics as a simple list with percentages
+- Highlight the standout metric briefly (1 sentence max)
+- Reference screenshot attachment when including visuals
+- Close with "Please let me know if you have any questions or if you need any further information."
+- Sign off with "Thanks," (not "Speak soon" or similar)
+- Avoid offering calls or over-explaining - keep it factual
+- No subject line suggestions needed in the body
+
+## Blog Post Style & Format
+- **Structure:** H1 title, short intro (2-3 paragraphs), numbered or themed H2 sections, closing CTA
+- **Tone:** Warm, supportive, plain English - avoid heavy legal jargon. Explain concepts as if to a friend
+- **Length:** ~800-1200 words. Enough depth to be useful, not so long it loses readers
+- **CTA:** Always close with phone number (03) 9787 4511 and "book a consultation"
+- **No em dashes:** Use dashes (-) or rewrite the sentence
+- **Author:** Always "Seam Media"
+- **Include with each post:** Meta description, tags, suggested publish date, Facebook/LinkedIn caption, Instagram caption
+- **Hashtags on socials:** Mix of brand (#LardnersSolicitors) + location (#MountEliza #MorningtonPeninsula) + topic-specific
+- **Instagram captions:** Use bullet points or checkmarks for scannable lists, end with "Link in bio"
+- **Facebook/LinkedIn captions:** Conversational opener, brief summary, "Read more: [link]"
+- **When user wants to copy/paste for website:** Output just the blog content (H1 through CTA) - no meta, tags, author, social captions
+
+## Blog Posts Written
+1. Settlement Day Delays: What to Do When Things Don't Go to Plan (Conveyancing)
+2. 5 Life Events That Mean It's Time to Update Your Will (Wills & Estates)
+3. Buying Property With Your Partner? Here's What You Need to Know (Property/Conveyancing)
+4. What Is a Section 32 and Why Does It Matter When Buying a Home? (Conveyancing)
+5. Separating? Here Are the First Steps You Should Take (Family Law)
+6. Power of Attorney: What It Is, Why You Need One, and How to Get It Right (Wills & Estates / Elder Law)
+7. What Happens to Your Property When You Separate? It's Not Always 50/50 (Family Law)
+8. Do You Need a Lawyer for That? 7 Common Situations Where Legal Advice Saves You Time, Money, and Stress (General / Firm Positioning)
+9. Planning for Your Parents' Future: A Legal Checklist for Adult Children (Elder Law / Wills & Estates)
+10. First Home Buyer? Here's What to Expect From the Legal Side of Buying a Property (Conveyancing / First Home Buyer)
+11. Understanding Consent Orders: How to Make Your Separation Agreement Legally Binding (Family Law)
+12. Why DIY Wills Are a False Economy: The Hidden Costs of Getting It Wrong (Wills & Estates)
+13. What Happens If You Die Without a Will in Victoria? Understanding Intestacy (Wills & Estates)
+14. When Should You Talk to a Family Lawyer? It's Earlier Than You Think (Family Law)
+15. The Difference Between Separation and Divorce: What You Need to Know (Family Law)
+
+## Blog Topic Coverage Notes
+- Conveyancing and property topics are well covered
+- Wills & estates now has good coverage (will updates + power of attorney)
+- Next posts should lean into family law (deeper topics), elder law, or commercial law
+- Family law topics with sensitivity (separation, family violence) should include relevant helpline numbers
+- Victoria-specific legislation should be referenced where applicable (e.g. Sale of Land Act, Family Law Act)
+- Practical "what to do" and "what to know" formats perform well for this audience

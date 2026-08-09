@@ -2,6 +2,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 export const REPORT_TIMEZONE = 'Australia/Melbourne';
 export const REPORT_LOOKBACK_DAYS = 30;
+// Weekly analytics emails have their own explicit opt-in switch. Portal
+// feedback, support and automation emails remain hard-disabled separately.
 export const REPORTS_GLOBAL_ENABLED = process.env.CLIENT_ANALYTICS_EMAILS_ENABLED === 'true';
 
 type MetricKey = 'impressions' | 'reach' | 'likes' | 'comments' | 'shares' | 'saves' | 'clicks' | 'views';
@@ -61,6 +63,25 @@ export type ClientAnalyticsReport = {
   dataNote?: string;
 };
 
+export type PortalAnalyticsMetric = {
+  key: MetricKey | 'engagements' | 'posts';
+  label: string;
+  value: number;
+  previousValue: number | null;
+  changePercent: number | null;
+};
+
+export type PortalAnalyticsSummary = {
+  hasData: boolean;
+  provider: ClientAnalyticsReport['provider'];
+  periodStart: string;
+  periodEnd: string;
+  sampledPosts: number;
+  metrics: PortalAnalyticsMetric[];
+  platforms: PlatformReport[];
+  dataNote?: string;
+};
+
 export type ReportRequest = {
   clientId: string;
   clientName: string;
@@ -91,6 +112,56 @@ type ZernioPlatformBreakdown = {
 export interface AnalyticsProvider {
   readonly name: ClientAnalyticsReport['provider'];
   getReport(request: ReportRequest): Promise<ClientAnalyticsReport>;
+}
+
+export function summariseClientAnalyticsReport(report: ClientAnalyticsReport): PortalAnalyticsSummary {
+  const sampledPosts = report.platforms.reduce((sum, platform) => sum + platform.posts, 0);
+  const previousPosts = report.platforms.reduce((sum, platform) => sum + platform.previousPosts, 0);
+  const metric = (key: MetricKey): PortalAnalyticsMetric | null => {
+    const matches = report.platforms.flatMap((platform) => platform.metrics.filter((item) => item.key === key));
+    if (!matches.length) return null;
+    const value = matches.reduce((sum, item) => sum + item.value, 0);
+    const hasPrevious = matches.some((item) => item.previousValue !== null);
+    const previousValue = hasPrevious
+      ? matches.reduce((sum, item) => sum + Number(item.previousValue || 0), 0)
+      : null;
+    return { key, label: METRIC_LABELS[key], value, previousValue, changePercent: changePercent(value, previousValue) };
+  };
+  const providerMetrics = METRIC_KEYS.map(metric).filter((item): item is PortalAnalyticsMetric => Boolean(item));
+  const engagementParts = providerMetrics.filter((item) => ['likes', 'comments', 'shares', 'saves'].includes(item.key));
+  const engagements = engagementParts.length ? {
+    key: 'engagements' as const,
+    label: 'Engagements',
+    value: engagementParts.reduce((sum, item) => sum + item.value, 0),
+    previousValue: engagementParts.some((item) => item.previousValue !== null)
+      ? engagementParts.reduce((sum, item) => sum + Number(item.previousValue || 0), 0)
+      : null,
+    changePercent: null as number | null,
+  } : null;
+  if (engagements) engagements.changePercent = changePercent(engagements.value, engagements.previousValue);
+  const headlineOrder = ['reach', 'impressions', 'engagements', 'clicks', 'views', 'posts'];
+  const postsMetric: PortalAnalyticsMetric = {
+    key: 'posts',
+    label: 'Posts measured',
+    value: sampledPosts,
+    previousValue: previousPosts,
+    changePercent: changePercent(sampledPosts, previousPosts),
+  };
+  const metrics: PortalAnalyticsMetric[] = [
+    ...providerMetrics,
+    ...(engagements ? [engagements] : []),
+    postsMetric,
+  ].sort((a, b) => headlineOrder.indexOf(a.key) - headlineOrder.indexOf(b.key));
+  return {
+    hasData: report.hasData,
+    provider: report.provider,
+    periodStart: report.periodStart,
+    periodEnd: report.periodEnd,
+    sampledPosts,
+    metrics,
+    platforms: report.platforms,
+    dataNote: report.dataNote,
+  };
 }
 
 function dateOnlyInTimezone(date: Date, timezone: string) {
@@ -461,8 +532,109 @@ function comparisonChartHtml(metrics: ReportMetric[]) {
     </div>`;
 }
 
+type EmailSummaryMetric = {
+  label: string;
+  value: number;
+  previousValue: number | null;
+  changePercent: number | null;
+};
+
+function sumMetrics(report: ClientAnalyticsReport, keys: MetricKey[]) {
+  const current = report.platforms.reduce((total, platform) => total + platform.metrics
+    .filter((metric) => keys.includes(metric.key))
+    .reduce((sum, metric) => sum + metric.value, 0), 0);
+  const matching = report.platforms.flatMap((platform) => platform.metrics.filter((metric) => keys.includes(metric.key)));
+  const previousIsKnown = matching.some((metric) => metric.previousValue !== null);
+  const previous = previousIsKnown
+    ? matching.reduce((sum, metric) => sum + Number(metric.previousValue || 0), 0)
+    : null;
+  return { current, previous, changePercent: changePercent(current, previous) };
+}
+
+function emailSummary(report: ClientAnalyticsReport) {
+  const posts = report.platforms.reduce((sum, platform) => sum + platform.posts, 0);
+  const previousPosts = report.platforms.reduce((sum, platform) => sum + platform.previousPosts, 0);
+  const reach = sumMetrics(report, ['reach']);
+  const engagement = sumMetrics(report, ['likes', 'comments', 'shares', 'saves']);
+  const clicks = sumMetrics(report, ['clicks']);
+  const impressions = sumMetrics(report, ['impressions']);
+  const views = sumMetrics(report, ['views']);
+  const visibility = impressions.current > 0
+    ? { label: 'Impressions', ...impressions }
+    : { label: 'Video views', ...views };
+
+  const metrics: EmailSummaryMetric[] = [
+    { label: 'Posts measured', value: posts, previousValue: previousPosts, changePercent: changePercent(posts, previousPosts) },
+    { label: 'Reach', value: reach.current, previousValue: reach.previous, changePercent: reach.changePercent },
+    { label: visibility.label, value: visibility.current, previousValue: visibility.previous, changePercent: visibility.changePercent },
+    { label: 'Engagements', value: engagement.current, previousValue: engagement.previous, changePercent: engagement.changePercent },
+  ];
+  if (clicks.current > 0 || Number(clicks.previous || 0) > 0) {
+    metrics[3] = { label: 'Clicks', value: clicks.current, previousValue: clicks.previous, changePercent: clicks.changePercent };
+  }
+
+  const comparable = metrics.filter((metric) => metric.changePercent !== null);
+  const strongest = [...comparable].sort((a, b) => Number(b.changePercent) - Number(a.changePercent))[0];
+  const watch = [...comparable].filter((metric) => Number(metric.changePercent) < 0)
+    .sort((a, b) => Number(a.changePercent) - Number(b.changePercent))[0];
+  const bestPlatform = [...report.platforms]
+    .filter((platform) => platform.posts > 0)
+    .sort((a, b) => {
+      const reachFor = (platform: PlatformReport) => platform.metrics.find((metric) => metric.key === 'reach')?.value || 0;
+      return reachFor(b) - reachFor(a) || b.posts - a.posts;
+    })[0];
+
+  const highlights: string[] = [];
+  if (strongest && Number(strongest.changePercent) > 0) {
+    highlights.push(`${strongest.label} increased ${Math.abs(Number(strongest.changePercent))}% compared with the previous 30 days.`);
+  } else if (bestPlatform) {
+    highlights.push(`${titleCase(bestPlatform.platform)} generated the strongest reach across the connected channels this period.`);
+  }
+  if (watch) {
+    highlights.push(`${watch.label} decreased ${Math.abs(Number(watch.changePercent))}%, so this is the main area we will watch next month.`);
+  } else {
+    highlights.push('There are no material downward trends in the headline results this period.');
+  }
+  const focus = bestPlatform
+    ? `Next, we will build on the formats working best on ${titleCase(bestPlatform.platform)} and keep improving the content that prompts meaningful engagement.`
+    : 'Next, we will keep testing the content formats that create meaningful reach and engagement.';
+
+  return { metrics, highlights, focus };
+}
+
+function summaryCardsHtml(metrics: EmailSummaryMetric[]) {
+  return `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0 8px;">
+      ${[0, 2].map((start) => `
+        <tr>
+          ${metrics.slice(start, start + 2).map((metric, index) => `
+            <td width="50%" valign="top" style="padding:${start === 0 ? '0 0 10px' : '0'};${index === 0 ? 'padding-right:5px;' : 'padding-left:5px;'}">
+              <div style="padding:15px;border:1px solid #e7e5e4;border-radius:12px;background:#fafaf9;">
+                <div style="font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#78716c;">${escapeHtml(metric.label)}</div>
+                <div style="margin-top:5px;font-size:23px;font-weight:800;color:#1c3c34;">${formatNumber(metric.value)}</div>
+                <div style="margin-top:4px;font-size:11px;color:${Number(metric.changePercent) >= 0 ? '#15803d' : '#b91c1c'};">${metric.changePercent === null ? 'Current period' : escapeHtml(changeWords(metric.changePercent).trim().replace(/^\(|\)$/g, ''))}</div>
+              </div>
+            </td>`).join('')}
+        </tr>`).join('')}
+    </table>`;
+}
+
+function platformMetricHtml(platform: PlatformReport) {
+  const preferredKeys: MetricKey[] = ['reach', 'impressions', 'views', 'likes', 'clicks'];
+  const metrics = [...platform.metrics]
+    .filter((metric) => metric.value > 0 || Number(metric.previousValue || 0) > 0)
+    .sort((a, b) => preferredKeys.indexOf(a.key) - preferredKeys.indexOf(b.key))
+    .slice(0, 5);
+  return metrics.map((metric) => `
+    <tr>
+      <td style="padding:8px 0;border-top:1px solid #f5f5f4;font-size:13px;color:#57534e;">${escapeHtml(metric.label)}</td>
+      <td align="right" style="padding:8px 0;border-top:1px solid #f5f5f4;font-size:13px;color:#292524;"><strong>${formatNumber(metric.value)}</strong>${changeHtml(metric.changePercent)}</td>
+    </tr>`).join('');
+}
+
 export function buildClientAnalyticsEmail(report: ClientAnalyticsReport) {
   const subject = `${report.clientName}: your 30-day social performance update`;
+  const summary = emailSummary(report);
   const lines = [
     `Hi ${report.recipientName},`,
     '',
@@ -474,12 +646,19 @@ export function buildClientAnalyticsEmail(report: ClientAnalyticsReport) {
     lines.push('We do not yet have enough connected-platform performance data for this reporting period.', '');
     lines.push('We will keep monitoring the connection and include the available results in your next update.', '');
   } else {
+    lines.push('At a glance:', '');
+    for (const metric of summary.metrics) {
+      lines.push(`- ${metric.label}: ${formatNumber(metric.value)}${changeWords(metric.changePercent)}`);
+    }
+    lines.push('', 'What changed:', '');
+    summary.highlights.forEach((highlight) => lines.push(`- ${highlight}`));
+    lines.push('', 'Our focus for the next period:', '', summary.focus, '');
     for (const platform of report.platforms.filter((item) => item.posts > 0)) {
-      lines.push(`${titleCase(platform.platform)}:`, '');
-      lines.push(`- Published posts measured: ${platform.posts}`);
-      for (const metric of platform.metrics) {
-        lines.push(`- ${metric.label}: ${formatNumber(metric.value)}${changeWords(metric.changePercent)}`);
-      }
+      lines.push(`${titleCase(platform.platform)} detail:`, '', `- Published posts measured: ${platform.posts}`);
+      platform.metrics
+        .filter((metric) => metric.value > 0 || Number(metric.previousValue || 0) > 0)
+        .slice(0, 5)
+        .forEach((metric) => lines.push(`- ${metric.label}: ${formatNumber(metric.value)}${changeWords(metric.changePercent)}`));
       lines.push('');
     }
     lines.push('These figures come directly from the connected social platforms and can change slightly as each platform finalises its reporting.', '');
@@ -490,12 +669,14 @@ export function buildClientAnalyticsEmail(report: ClientAnalyticsReport) {
 
   const platformHtml = report.hasData
     ? report.platforms.filter((item) => item.posts > 0).map((platform) => `
-      <div style="margin:24px 0;padding:20px;border:1px solid #e7e5e4;border-radius:14px;background:#ffffff;">
-        <h2 style="margin:0 0 14px;color:#1c3c34;font-size:20px;">${escapeHtml(titleCase(platform.platform))}</h2>
-        <ul style="margin:0;padding-left:20px;color:#44403c;">
-          <li style="margin:8px 0;">Published posts measured: ${platform.posts}</li>
-          ${platform.metrics.map((metric) => `<li style="margin:8px 0;">${escapeHtml(metric.label)}: <strong>${formatNumber(metric.value)}</strong>${changeHtml(metric.changePercent)}</li>`).join('')}
-        </ul>
+      <div style="margin:18px 0;padding:20px;border:1px solid #e7e5e4;border-radius:14px;background:#ffffff;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <h2 style="margin:0;color:#1c3c34;font-size:19px;">${escapeHtml(titleCase(platform.platform))}</h2>
+          <span style="font-size:12px;color:#78716c;">${platform.posts} ${platform.posts === 1 ? 'post' : 'posts'} measured</span>
+        </div>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:12px;">
+          ${platformMetricHtml(platform)}
+        </table>
         ${comparisonChartHtml(platform.metrics)}
       </div>`).join('')
     : '<p style="padding:18px;border-radius:12px;background:#f5f5f0;color:#57534e;">We do not yet have enough connected-platform performance data for this reporting period. We will keep monitoring the connection and include the available results in your next update.</p>';
@@ -512,6 +693,18 @@ export function buildClientAnalyticsEmail(report: ClientAnalyticsReport) {
         <div style="padding:28px;">
           <p>Hi ${escapeHtml(report.recipientName)},</p>
           <p>Here is your social media performance update for ${escapeHtml(formatPeriodDate(report.periodStart))} to ${escapeHtml(formatPeriodDate(report.periodEnd))}.</p>
+          ${report.hasData ? `
+            <h2 style="margin:24px 0 4px;color:#1c3c34;font-size:19px;">At a glance</h2>
+            <p style="margin:0;color:#78716c;font-size:13px;">The headline results across your connected channels</p>
+            ${summaryCardsHtml(summary.metrics)}
+            <div style="margin:20px 0;padding:18px;border-radius:12px;background:#f0fdf4;border-left:4px solid #22c55e;">
+              <h2 style="margin:0 0 10px;color:#1c3c34;font-size:17px;">What changed</h2>
+              ${summary.highlights.map((highlight) => `<p style="margin:6px 0;color:#44403c;font-size:14px;line-height:1.5;">${escapeHtml(highlight)}</p>`).join('')}
+            </div>
+            <div style="margin:20px 0;padding:18px;border-radius:12px;background:#f5f5f0;">
+              <h2 style="margin:0 0 8px;color:#1c3c34;font-size:17px;">Our focus for the next period</h2>
+              <p style="margin:0;color:#44403c;font-size:14px;line-height:1.55;">${escapeHtml(summary.focus)}</p>
+            </div>` : ''}
           ${platformHtml}
           ${report.hasData ? '<p style="font-size:13px;color:#78716c;">These figures come directly from the connected social platforms and can change slightly as each platform finalises its reporting.</p>' : ''}
           <p>If you would like to discuss the results or adjust the content focus for the next month, simply reply to this email.</p>

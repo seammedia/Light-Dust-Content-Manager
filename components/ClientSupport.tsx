@@ -74,7 +74,7 @@ export function ClientSupport({ client, pin }: ClientSupportProps) {
         <h2 className="mt-1 font-serif text-3xl font-bold text-brand-dark">How can we help?</h2>
         <p className="mt-2 text-stone-500">Log a request here so it can be tracked through to completion.</p>
       </div>
-      <form onSubmit={submit} className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+      <form onSubmit={submit} className="ui-surface rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
         <div className="mb-5 flex items-center gap-3"><CircleHelp className="h-5 w-5 text-brand-green" /><h3 className="text-lg font-semibold text-brand-dark">New support request</h3></div>
         <div className="space-y-5">
           <label className="block text-sm font-medium text-stone-700">Subject<input required value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="What do you need help with?" className="mt-1.5 w-full rounded-lg border border-stone-300 px-3 py-2.5 outline-none focus:border-brand-green focus:ring-2 focus:ring-brand-green/20" /></label>
@@ -89,7 +89,7 @@ export function ClientSupport({ client, pin }: ClientSupportProps) {
       <section className="space-y-3">
         <div className="flex items-center gap-2"><MessageSquareText className="h-5 w-5 text-brand-green" /><h3 className="text-lg font-semibold text-brand-dark">Your requests</h3></div>
         {conversations.filter((conversation) => conversation.kind === 'support').length ? conversations.filter((conversation) => conversation.kind === 'support').map((conversation) => (
-          <article key={conversation.id} className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+          <article key={conversation.id} className="ui-surface rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-3"><div><h4 className="font-semibold text-brand-dark">{conversation.subject}</h4><p className="mt-1 flex items-center gap-1 text-xs text-stone-400"><Clock3 className="h-3.5 w-3.5" /> Updated {new Date(conversation.last_message_at).toLocaleString('en-AU')}</p></div><span className="rounded-full bg-stone-100 px-3 py-1 text-xs font-semibold capitalize text-stone-600">{String(conversation.status).split('_').join(' ')}</span></div>
             <div className="mt-4 space-y-2">{(conversation.portal_messages || []).filter((message: any) => !message.is_internal).map((message: any) => <div key={message.id} className={`rounded-xl px-3 py-2.5 text-sm ${message.sender_type === 'client' ? 'ml-8 bg-stone-100 text-stone-700' : 'mr-8 bg-emerald-50 text-stone-700'}`}><p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-stone-400">{message.sender_type === 'client' ? 'You' : message.sender_name || 'Seam Media'}</p><p className="whitespace-pre-wrap">{message.body}</p></div>)}</div>
           </article>

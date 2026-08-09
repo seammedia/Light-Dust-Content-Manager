@@ -1,4 +1,4 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { VercelRequest } from '@vercel/node';
 
 export type PortalClient = {
@@ -9,6 +9,12 @@ export type PortalClient = {
   owner_user_id?: string | null;
   pin?: string | null;
 };
+
+// Portal email alerts are hard-disabled. In-platform notifications and
+// automation continue to work without sending email.
+export function isPortalEmailNotificationsEnabled() {
+  return false;
+}
 
 export function portalDb(): SupabaseClient {
   const url = process.env.VITE_SUPABASE_URL;
@@ -34,7 +40,7 @@ export async function authenticatePortalRequest(req: VercelRequest, clientId: st
 }
 
 export async function sendPortalEmail(input: { to: string[]; subject: string; text: string }) {
-  if (!process.env.RESEND_API_KEY || !input.to.length) return;
+  if (!isPortalEmailNotificationsEnabled() || !process.env.RESEND_API_KEY || !input.to.length) return;
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },

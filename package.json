@@ -5,8 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:full": "npx vercel dev",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check:weekly-scheduling": "node scripts/check-weekly-client-scheduling.mjs",
+    "test": "npm run test:analytics-reports && node --experimental-strip-types --test tests/late-schedule.test.ts",
+    "test:analytics-reports": "node --experimental-strip-types --test tests/client-analytics-reports.test.ts"
   },
   "dependencies": {
     "@google/genai": "^1.0.0",

@@ -3,6 +3,7 @@ import { Check, Leaf, Loader2 } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import { getAuthSession, signInWithEmail, signInWithGoogle, signUpWithEmail } from '../services/authClient';
 import { recoverPaidOnboarding } from '../services/onboardingRecovery';
+import { findAccessibleClient } from '../services/clientAccess';
 
 type Plan = 'basic' | 'pro' | 'max';
 type Billing = 'monthly' | 'annual';
@@ -13,12 +14,7 @@ const AUTH_MODE_STORAGE_KEY = 'seam_auth_mode';
 
 async function findOrRecoverClient(session: Awaited<ReturnType<typeof getAuthSession>>) {
   if (!session?.user) return null;
-  const { data: existing, error } = await supabase
-    .from('clients')
-    .select('provisioning_status, subscription_status')
-    .eq('owner_user_id', session.user.id)
-    .maybeSingle();
-  if (error) throw error;
+  const existing = await findAccessibleClient(session.user.id);
   if (existing) return existing;
 
   const result = await recoverPaidOnboarding(session);
