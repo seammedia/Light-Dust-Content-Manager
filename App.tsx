@@ -20,7 +20,7 @@ import { ClientSocialInbox } from './components/ClientSocialInbox';
 import { LeadManagement } from './components/LeadManagement';
 import { supabase } from './services/supabaseClient';
 import { Plus, Leaf, Loader2, Copy, Check, Lock, Upload, Trash2, AlertCircle, RefreshCw, Settings, Table2, Calendar, Users, Sparkles, Mail, Clock, Send, FileText, Image, Film, X, HardDrive, LogOut, Images, Columns3 } from 'lucide-react';
-import { generateCaptionFromImage, updateFromFeedback } from './services/geminiService';
+import { generateCaptionFromImage, updateFromFeedback } from './services/openaiCaptionService';
 import { generateImageFromFeedback, generateImageFromPrompt } from './services/openaiImageService';
 import { isGmailConnected, getConnectedEmail, connectGmail, sendEmail, clearGmailSettings } from './services/gmailService';
 import { isDriveConnected, getDriveEmail, connectDrive, clearDriveSettings } from './services/driveService';
@@ -1791,7 +1791,13 @@ export default function App() {
     setGeneratingCaptionId(post.id);
 
     try {
-      const result = await generateCaptionFromImage(post.imageUrl, currentClient.brand_name, currentClient.client_notes);
+      const result = await generateCaptionFromImage(
+        currentClient.id,
+        post.imageUrl,
+        currentClient.brand_name,
+        currentClient.client_notes,
+        getStoredSession()?.pin || '',
+      );
 
       // Update caption
       await handleUpdatePost(post.id, 'generatedCaption', result.caption);
@@ -1847,9 +1853,11 @@ export default function App() {
       // Auto-generate matching caption
       try {
         const captionResult = await generateCaptionFromImage(
+          currentClient.id,
           uploadedUrl,
           currentClient.brand_name,
-          currentClient.client_notes
+          currentClient.client_notes,
+          getStoredSession()?.pin || '',
         );
         await handleUpdatePost(postId, 'generatedCaption', captionResult.caption);
         await handleUpdatePost(postId, 'generatedHashtags', captionResult.hashtags);
@@ -1912,9 +1920,11 @@ export default function App() {
 
           // Regenerate caption for the new image
           const captionResult = await generateCaptionFromImage(
+            currentClient.id,
             uploadedUrl,
             currentClient.brand_name,
-            currentClient.client_notes
+            currentClient.client_notes,
+            getStoredSession()?.pin || '',
           );
 
           await handleUpdatePost(post.id, 'generatedCaption', captionResult.caption);
@@ -1925,11 +1935,13 @@ export default function App() {
           // Fall back to just updating caption/hashtags if image generation fails
           if (post.generatedCaption || (post.generatedHashtags && post.generatedHashtags.length > 0)) {
             const result = await updateFromFeedback(
+              currentClient.id,
               post.generatedCaption || '',
               post.generatedHashtags || [],
               post.notes,
               currentClient.brand_name,
-              currentClient.client_notes
+              currentClient.client_notes,
+              getStoredSession()?.pin || '',
             );
             await handleUpdatePost(post.id, 'generatedCaption', result.caption);
             await handleUpdatePost(post.id, 'generatedHashtags', result.hashtags);
@@ -1946,11 +1958,13 @@ export default function App() {
         }
 
         const result = await updateFromFeedback(
+          currentClient.id,
           post.generatedCaption || '',
           post.generatedHashtags || [],
           post.notes,
           currentClient.brand_name,
-          currentClient.client_notes
+          currentClient.client_notes,
+          getStoredSession()?.pin || '',
         );
 
         await handleUpdatePost(post.id, 'generatedCaption', result.caption);
@@ -2042,8 +2056,8 @@ export default function App() {
                 <p className="font-semibold text-stone-800">Missing or Invalid Environment Variables:</p>
                 <p>1. Check that <code className="bg-stone-200 px-1 rounded">VITE_SUPABASE_URL</code> is set.</p>
                 <p>2. Check that <code className="bg-stone-200 px-1 rounded">VITE_SUPABASE_ANON_KEY</code> is set.</p>
-                <p>3. Check that <code className="bg-stone-200 px-1 rounded">VITE_GEMINI_API_KEY</code> is set.</p>
-                <p className="mt-2 text-xs text-stone-400">Note: All environment variables in Vercel must be prefixed with VITE_ to work with this app.</p>
+                <p>3. Check that the server-side <code className="bg-stone-200 px-1 rounded">OPENAI_API_KEY</code> is set.</p>
+                <p className="mt-2 text-xs text-stone-400">Note: Only browser-safe client variables use the VITE_ prefix. Secret API keys must remain server-side.</p>
             </div>
 
             <button 

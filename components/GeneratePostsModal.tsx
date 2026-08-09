@@ -46,8 +46,10 @@ const extractDriveFolderUrl = (notes: string): string | null => {
   return null;
 };
 
-// Generate content ideas using Gemini
+// Generate content ideas through the server-side OpenAI endpoint.
 const generateContentIdeas = async (
+  clientId: string,
+  pin: string,
   brandName: string,
   brandMission: string,
   brandTone: string,
@@ -56,107 +58,24 @@ const generateContentIdeas = async (
   numberOfPosts: number,
   context: ContentContext | null
 ): Promise<{ caption: string; hashtags: string[]; sourceIdeaId: string; sourceUrl: string }[]> => {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error('Gemini API key not configured.');
-  }
-
-  const { GoogleGenerativeAI, SchemaType } = await import('@google/generative-ai');
-  const genAI = new GoogleGenerativeAI(apiKey);
-
-  const model = genAI.getGenerativeModel({
-    model: "gemini-2.0-flash-exp",
-    systemInstruction: `
-      You are the expert social media manager for '${brandName}'.
-
-      ${brandMission ? `Brand Mission: ${brandMission}` : ''}
-      ${brandTone ? `Brand Tone: ${brandTone}` : ''}
-      ${brandKeywords?.length ? `Key Themes: ${brandKeywords.join(", ")}` : ''}
-      ${clientNotes ? `\nClient Guidelines: ${clientNotes}` : ''}
-      ${context?.profile?.industry ? `\nIndustry: ${context.profile.industry}` : ''}
-      ${context?.profile?.audience ? `\nAudience: ${context.profile.audience}` : ''}
-      ${context?.profile?.compliance_notes ? `\nCompliance rules: ${context.profile.compliance_notes}` : ''}
-
-      Proven content learnings:
-      ${context?.learnings?.length ? context.learnings.map((learning) => `- ${learning.recommendation} (confidence ${learning.confidence}, sample ${learning.sample_size})`).join('\n') : '- No reliable performance learnings yet. Do not invent them.'}
-
-      Current sourced opportunities:
-      ${context?.ideas?.length ? context.ideas.map((idea) => `- ID ${idea.id}: ${idea.title}. Angle: ${idea.angle}. Source: ${idea.source_title} ${idea.source_url}. ${idea.risk_notes || ''}`).join('\n') : '- No current sourced opportunities are available. Use evergreen brand expertise.'}
-
-      Your task is to generate ${numberOfPosts} unique Instagram post ideas.
-
-      IMPORTANT RULES:
-      - NEVER use em dashes (—) or en dashes (–). Use commas or periods instead.
-      - Each post should be different and cover a unique topic or angle.
-      - Write in a warm, friendly, conversational tone.
-      - Use short paragraphs (2-3 sentences max per paragraph).
-      - Add line breaks between paragraphs for readability.
-      - Use emojis sparingly but effectively (1-3 per caption).
-      - Include a subtle call to action at the end.
-      - Keep captions concise but engaging (3-5 short paragraphs).
-      - Generate 4-5 relevant hashtags per post (without the # symbol).
-      - Use a current sourced opportunity only when it is genuinely relevant.
-      - Never copy article wording. Add the client's own useful angle.
-      - When using an opportunity, return its exact ID and URL. Otherwise return empty strings.
-      - Treat analytics as directional. Do not overfit to a single post.
-    `,
-    generationConfig: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: SchemaType.OBJECT,
-        properties: {
-          posts: {
-            type: SchemaType.ARRAY,
-            items: {
-              type: SchemaType.OBJECT,
-              properties: {
-                caption: { type: SchemaType.STRING },
-                hashtags: {
-                  type: SchemaType.ARRAY,
-                  items: { type: SchemaType.STRING },
-                },
-                sourceIdeaId: { type: SchemaType.STRING },
-                sourceUrl: { type: SchemaType.STRING },
-              },
-              required: ["caption", "hashtags", "sourceIdeaId", "sourceUrl"],
-            },
-          },
-        },
-        required: ["posts"],
-      },
-    },
+  const response = await fetch('/api/caption-generation', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-portal-pin': pin },
+    body: JSON.stringify({
+      action: 'generate_posts',
+      clientId,
+      brandName,
+      brandMission,
+      brandTone,
+      brandKeywords,
+      clientNotes,
+      numberOfPosts,
+      context,
+    }),
   });
-
-  const prompt = `
-    Generate ${numberOfPosts} unique Instagram post ideas for ${brandName}.
-
-    Each post should:
-    - Have a unique topic or angle that showcases the brand
-    - Include an engaging caption with a hook, value proposition, and call to action
-    - Have 4-5 relevant hashtags (without the # symbol)
-
-    Make sure each post is distinct and covers different aspects of the brand.
-    Remember: NO em dashes or en dashes. Use commas, periods, or line breaks instead.
-  `;
-
-  const result = await model.generateContent([{ text: prompt }]);
-  const response = result.response;
-  const text = response.text();
-
-  if (!text) throw new Error("No response from Gemini");
-
-  const parsed = JSON.parse(text);
-
-  // Clean up any em dashes that might have slipped through
-  return (parsed.posts || []).map((post: any) => {
-    const selectedIdea = context?.ideas.find((idea) => idea.id === post.sourceIdeaId);
-    return {
-      caption: (post.caption || '').replace(/—/g, ', ').replace(/–/g, ', '),
-      hashtags: (post.hashtags || []).slice(0, 5),
-      sourceIdeaId: selectedIdea?.id || '',
-      sourceUrl: selectedIdea?.source_url || '',
-    };
-  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'Failed to generate content ideas.');
+  return Array.isArray(result.posts) ? result.posts : [];
 };
 
 export function GeneratePostsModal({ client, pin, onClose, onPostsGenerated }: GeneratePostsModalProps) {
@@ -236,6 +155,8 @@ export function GeneratePostsModal({ client, pin, onClose, onPostsGenerated }: G
 
       // Generate content ideas
       const contentIdeas = await generateContentIdeas(
+        client.id,
+        pin,
         client.brand_name,
         client.brand_mission || '',
         client.brand_tone || '',
