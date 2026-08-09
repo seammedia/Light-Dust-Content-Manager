@@ -185,7 +185,9 @@ export function ClientAnalyticsEmailSettings({ pin }: { pin: string }) {
       label: 'Scheduler access',
       value: data?.readiness.schedulerSecretConfigured ? 'Secret present' : 'Not configured',
       ready: Boolean(data?.readiness.schedulerSecretConfigured),
-      detail: 'A scheduler must still be explicitly created and enabled later.',
+      detail: data?.readiness.schedulerSecretConfigured
+        ? 'Protected scheduler requests are authenticated.'
+        : 'Set the scheduler secret before enabling scheduled delivery.',
     },
     {
       label: 'Zernio analytics',

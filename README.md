@@ -3257,6 +3257,14 @@ Email analytics expansion recorded 9 August 2026:
 - The email includes a direct link to the full client analytics dashboard.
 - The recipient list, opt-in state, send schedule and duplicate protection were not changed by this template expansion.
 
+Production delivery activation recorded 9 August 2026:
+
+- `CLIENT_ANALYTICS_EMAILS_ENABLED` is enabled for the production project.
+- The saved Monday 9:00 am opt-ins are Built3d, FITxG4, Micro Demo, Philotimo Freestyle Jujitsu and Salters. No other client was enabled.
+- Dwellix now has a ready Zernio connection but remains opted out of weekly email delivery.
+- The hourly Vercel cron is active for `/api/client-analytics-report-run` on the current production deployment.
+- Resend, `CRON_SECRET` and the dedicated Zernio key are configured. No manual report or test email was sent during activation.
+
 Vercel Pro resolved the earlier function-count and hourly-cron plan limits. It did not by itself configure the email provider, analytics provider, environment variables, database migration, client mapping, opt-in, or delivery testing. Those remain separate requirements.
 
 ### End-to-end flow
