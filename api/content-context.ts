@@ -3,6 +3,7 @@ import { authenticatePortalRequest } from '../server/portal.js';
 import {
   summariseClientAnalyticsReport,
   SupabaseSnapshotAnalyticsProvider,
+  type TopPostAnalytics,
   ZernioAnalyticsProvider,
 } from '../server/clientAnalyticsReports.js';
 
@@ -10,6 +11,65 @@ export const maxDuration = 30;
 
 function clientIdFrom(req: VercelRequest) {
   return String(req.query.clientId || req.body?.clientId || '').trim();
+}
+
+function lookbackDaysFrom(req: VercelRequest) {
+  const requested = Number(req.query.lookbackDays || req.body?.lookbackDays || 30);
+  return [30, 60, 90].includes(requested) ? requested : 30;
+}
+
+function includeAnalyticsDetailsFrom(req: VercelRequest) {
+  return String(req.query.includeAnalyticsDetails || req.body?.includeAnalyticsDetails || '') === '1';
+}
+
+function number(value: unknown) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function snapshotTopPosts(rows: any[], periodStart: string, periodEnd: string): TopPostAnalytics[] {
+  return rows
+    .map((row) => {
+      const relatedPost = Array.isArray(row.posts) ? row.posts[0] : row.posts;
+      const publishedAt = relatedPost?.date || row.captured_on || null;
+      const date = String(publishedAt || '').slice(0, 10);
+      const likes = number(row.likes);
+      const comments = number(row.comments);
+      const shares = number(row.shares);
+      const saves = number(row.saves);
+      const reach = number(row.reach);
+      const impressions = number(row.impressions);
+      const engagements = likes + comments + shares + saves;
+      return {
+        id: `${row.post_id}:${row.platform}`,
+        content: String(relatedPost?.title || '').trim(),
+        publishedAt,
+        platform: String(row.platform || 'social').toLowerCase(),
+        thumbnailUrl: null,
+        postUrl: null,
+        metrics: {
+          impressions,
+          reach,
+          likes,
+          comments,
+          shares,
+          saves,
+          clicks: number(row.clicks),
+          views: number(row.views),
+          engagements,
+          engagementRate: number(row.engagement_rate) || (reach ? Math.round((engagements / reach) * 1000) / 10 : 0),
+        },
+        date,
+      };
+    })
+    .filter((row) => row.date >= periodStart && row.date <= periodEnd)
+    .sort((left, right) => {
+      const leftScore = left.metrics.reach || left.metrics.impressions || left.metrics.views || left.metrics.engagements;
+      const rightScore = right.metrics.reach || right.metrics.impressions || right.metrics.views || right.metrics.engagements;
+      return rightScore - leftScore;
+    })
+    .slice(0, 6)
+    .map(({ date: _date, ...row }) => row);
 }
 
 function normaliseScheduleTime(slot: any): string | null {
@@ -39,6 +99,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!['GET', 'PATCH'].includes(req.method || '')) return res.status(405).json({ error: 'Method not allowed' });
   const clientId = clientIdFrom(req);
   if (!clientId) return res.status(400).json({ error: 'clientId is required' });
+  const lookbackDays = lookbackDaysFrom(req);
+  const includeAnalyticsDetails = includeAnalyticsDetailsFrom(req);
 
   try {
     const { db } = await authenticatePortalRequest(req, clientId);
@@ -91,28 +153,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!latest.has(key)) latest.set(key, metric);
     }
     const rows = [...latest.values()];
-    const topPosts = [...rows]
-      .sort((a, b) => (Number(b.reach || b.impressions || b.views || 0) - Number(a.reach || a.impressions || a.views || 0)))
-      .slice(0, 5);
-
     let report;
+    let liveTopPosts: TopPostAnalytics[] = [];
     let liveAnalyticsError: string | null = null;
     const reportRequest = {
       clientId,
       clientName: client?.brand_name || client?.name || 'Client',
-      lookbackDays: 30,
+      lookbackDays,
+      includeDaily: includeAnalyticsDetails,
     };
     if (client?.analytics_enabled && client.zernio_profile_id) {
-      try {
-        report = await new ZernioAnalyticsProvider(client.zernio_profile_id).getReport(reportRequest);
-      } catch (error) {
-        liveAnalyticsError = error instanceof Error ? error.message : 'Live analytics could not be loaded.';
-      }
+      const provider = new ZernioAnalyticsProvider(client.zernio_profile_id);
+      const [reportResult, topPostsResult] = await Promise.allSettled([
+        provider.getReport(reportRequest),
+        includeAnalyticsDetails ? provider.getTopPosts(reportRequest) : Promise.resolve([]),
+      ]);
+      if (reportResult.status === 'fulfilled') report = reportResult.value;
+      else liveAnalyticsError = reportResult.reason instanceof Error
+        ? reportResult.reason.message
+        : 'Live analytics could not be loaded.';
+      if (topPostsResult.status === 'fulfilled') liveTopPosts = topPostsResult.value;
     }
     if (!report) {
       report = await new SupabaseSnapshotAnalyticsProvider(db).getReport(reportRequest);
     }
     const analytics = summariseClientAnalyticsReport(report);
+    const topPosts = includeAnalyticsDetails
+      ? (liveTopPosts.length ? liveTopPosts : snapshotTopPosts(rows, analytics.periodStart, analytics.periodEnd))
+      : [];
 
     return res.status(200).json({
       profile: profile || null,
