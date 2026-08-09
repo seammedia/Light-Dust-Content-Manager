@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { normaliseZernioMetrics } from './clientAnalyticsReports.js';
 
 type IntelligenceJob = {
   id: string;
@@ -155,11 +156,6 @@ async function discoverIdeas(db: SupabaseClient, job: IntelligenceJob) {
   return { ideasAdded: rows.length };
 }
 
-function metricNumber(value: unknown): number {
-  const number = Number(value || 0);
-  return Number.isFinite(number) ? number : 0;
-}
-
 async function syncAnalytics(db: SupabaseClient, job: IntelligenceJob) {
   const apiKey = process.env.ZERNIO_API_KEY || process.env.VITE_LATE_API_KEY;
   if (!apiKey) throw new Error('Zernio analytics is not configured.');
@@ -187,6 +183,7 @@ async function syncAnalytics(db: SupabaseClient, job: IntelligenceJob) {
       : [{ platform: payload.platform || 'unknown', analytics: payload.analytics || {}, publishedAt: payload.publishedAt }];
     const rows = platformRows.map((entry: any) => {
       const analytics = entry.analytics || {};
+      const metrics = normaliseZernioMetrics(analytics);
       return {
         client_id: job.client_id,
         post_id: post.id,
@@ -194,9 +191,8 @@ async function syncAnalytics(db: SupabaseClient, job: IntelligenceJob) {
         platform: entry.platform || 'unknown',
         captured_on: new Date().toISOString().slice(0, 10),
         published_at: entry.publishedAt || payload.publishedAt || null,
-        impressions: metricNumber(analytics.impressions), reach: metricNumber(analytics.reach), likes: metricNumber(analytics.likes),
-        comments: metricNumber(analytics.comments), shares: metricNumber(analytics.shares), saves: metricNumber(analytics.saves),
-        clicks: metricNumber(analytics.clicks), views: metricNumber(analytics.views), engagement_rate: analytics.engagementRate ?? null,
+        ...metrics,
+        engagement_rate: analytics.engagementRate ?? analytics.engagement_rate ?? null,
         raw_metrics: analytics,
       };
     });
@@ -233,7 +229,7 @@ async function learnWeekly(db: SupabaseClient, job: IntelligenceJob) {
   const since = new Date(Date.now() - profile.analytics_lookback_days * 86400000).toISOString();
   const { data, error } = await db
     .from('social_post_metric_snapshots')
-    .select('*, posts(title, date, generated_caption, media_type)')
+    .select('*, posts(title, date, generated_caption, generated_hashtags, media_type, content_type, image_urls)')
     .eq('client_id', job.client_id)
     .gte('created_at', since)
     .order('captured_on', { ascending: false })

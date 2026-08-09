@@ -2,6 +2,13 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { portalDb } from '../server/portal.js';
 import { REPORTS_GLOBAL_ENABLED, REPORT_TIMEZONE } from '../server/clientAnalyticsReports.js';
 
+const INACTIVE_CLIENT_NAMES = new Set([
+  'Flagworks', 'Light Dust', 'Mabii Co', 'Efficient Finance', 'Phoenix Hospitality Group',
+  'Mediterranean Blu Spritz', 'The Mastery Lab', 'Little Windmill Clothing Co', 'Lease of Mind',
+  'Bark Hair', 'NSW Fishing League', 'Laud Recovery', 'Familia Fitness', 'Goochs Garage',
+  'KHY Physio', 'Sandhurst Roofing',
+]);
+
 function header(req: VercelRequest, name: string) {
   const value = req.headers[name];
   return String(Array.isArray(value) ? value[0] : value || '');
@@ -34,6 +41,7 @@ type ReportClient = {
 
 function isEligibleSocialClient(client: ReportClient) {
   if (client.name === 'Seam Media') return false;
+  if (client.name && INACTIVE_CLIENT_NAMES.has(client.name)) return false;
   if (['paused', 'cancelled'].includes(String(client.provisioning_status || '').toLowerCase())) return false;
   if (['cancelled', 'unpaid', 'incomplete_expired'].includes(String(client.subscription_status || '').toLowerCase())) return false;
   return Boolean(client.plan_name || client.zernio_profile_id || client.late_profile_ids?.length);
@@ -52,7 +60,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         { data: runs, error: runsError },
       ] = await Promise.all([
         db.from('clients')
-          .select('id,name,brand_name,contact_name,contact_email,plan_name,provisioning_status,subscription_status,zernio_profile_id,late_profile_ids')
+          .select('id,name,brand_name,contact_name,contact_email,plan_name,provisioning_status,subscription_status,zernio_profile_id,late_profile_ids,analytics_enabled')
           .order('name'),
         db.from('client_analytics_report_settings').select('*'),
         db.from('client_analytics_report_runs')
@@ -106,7 +114,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const { data: client } = await db
       .from('clients')
-      .select('id,name,plan_name,provisioning_status,subscription_status,zernio_profile_id,late_profile_ids')
+      .select('id,name,plan_name,provisioning_status,subscription_status,zernio_profile_id,late_profile_ids,business_description,brand_mission,brand_keywords')
       .eq('id', clientId)
       .maybeSingle();
     if (!client || !isEligibleSocialClient(client)) {
@@ -134,6 +142,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .select('*')
       .single();
     if (error) throw error;
+
+    const entitlementUpdatedAt = new Date().toISOString();
+    const { error: clientError } = await db.from('clients')
+      .update({ analytics_enabled: enabled, updated_at: entitlementUpdatedAt })
+      .eq('id', clientId);
+    if (clientError) throw clientError;
+    const { data: updatedProfile, error: profileUpdateError } = await db
+      .from('content_intelligence_profiles')
+      .update({ enabled, analytics_lookback_days: 30, updated_at: entitlementUpdatedAt })
+      .eq('client_id', clientId)
+      .select('client_id')
+      .maybeSingle();
+    if (profileUpdateError) throw profileUpdateError;
+    if (!updatedProfile) {
+      const { error: profileInsertError } = await db.from('content_intelligence_profiles').insert({
+        client_id: clientId,
+        enabled,
+        industry: client.business_description || client.brand_mission || 'general business',
+        audience: client.business_description || null,
+        source_queries: Array.isArray(client.brand_keywords) ? client.brand_keywords : [],
+        analytics_lookback_days: 30,
+        updated_at: entitlementUpdatedAt,
+      });
+      if (profileInsertError) throw profileInsertError;
+    }
     return res.status(200).json({
       settings: data,
       globalEnabled: REPORTS_GLOBAL_ENABLED,

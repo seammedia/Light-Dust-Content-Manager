@@ -24,21 +24,28 @@ export function ClientHome({ client, posts, onNavigate }: ClientHomeProps) {
   );
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6 p-5 sm:p-7 lg:p-8">
-      <div>
-        <p className="text-sm font-medium text-brand-green">Client portal</p>
-        <h2 className="mt-1 font-serif text-3xl font-bold text-brand-dark">Welcome back, {client.contact_name || client.name}</h2>
-        <p className="mt-2 max-w-2xl text-stone-500">Review what needs your attention and keep your business details up to date in one place.</p>
-      </div>
+    <div className="mx-auto w-full max-w-6xl space-y-7 p-5 sm:p-7 lg:p-9">
+      <section className="home-hero overflow-hidden rounded-[28px] border border-[#223123] bg-[#1f2b20] px-7 py-8 text-white shadow-[0_24px_60px_rgba(28,38,29,0.16)] sm:px-9 sm:py-10">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-200/70">Client workspace</p>
+        <div className="mt-3 flex flex-wrap items-end justify-between gap-6">
+          <div>
+            <h2 className="font-serif text-4xl font-semibold tracking-tight text-white">Welcome back, {client.contact_name || client.name}</h2>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-white/55">See what needs attention, review upcoming content and keep your brand details current.</p>
+          </div>
+          <button type="button" onClick={() => onNavigate('content')} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#1f2b20] shadow-lg transition-all hover:-translate-y-0.5 hover:bg-emerald-50">
+            Open calendar <ArrowRight className="h-4 w-4" />
+          </button>
+        </div>
+      </section>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="ui-stagger grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
           { label: 'Needs approval', value: awaitingApproval, icon: CircleAlert, tone: 'text-amber-700 bg-amber-50' },
           { label: 'Approved', value: approved, icon: CheckCircle2, tone: 'text-emerald-700 bg-emerald-50' },
           { label: 'Published', value: posted, icon: CalendarCheck, tone: 'text-stone-700 bg-stone-100' },
           { label: 'Total content', value: posts.length, icon: Clock3, tone: 'text-blue-700 bg-blue-50' },
         ].map(({ label, value, icon: Icon, tone }) => (
-          <div key={label} className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+          <div key={label} className="ui-surface ui-surface-interactive rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
             <div className={`mb-4 inline-flex rounded-xl p-2.5 ${tone}`}><Icon className="h-5 w-5" /></div>
             <p className="text-3xl font-semibold text-brand-dark">{value}</p>
             <p className="mt-1 text-sm text-stone-500">{label}</p>
@@ -47,7 +54,7 @@ export function ClientHome({ client, posts, onNavigate }: ClientHomeProps) {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-        <section className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+        <section className="ui-surface rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.14em] text-stone-400">Next up</p>
@@ -67,7 +74,7 @@ export function ClientHome({ client, posts, onNavigate }: ClientHomeProps) {
           </button>
         </section>
 
-        <section className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+        <section className="ui-surface rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
           <div className="flex items-center gap-3">
             <div className={`rounded-xl p-2.5 ${brandComplete ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
               <Palette className="h-5 w-5" />

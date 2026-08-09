@@ -1,7 +1,4 @@
-import { randomUUID } from 'node:crypto';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
-import sharp from 'sharp';
 import { cleanText, portalDb } from './portal.js';
 
 const LOST_STAGES = new Set(['not_interested', 'no_response', 'not_qualified']);
@@ -11,7 +8,18 @@ const VALID_STAGES = new Set([
   'not_interested', 'no_response', 'not_qualified',
 ]);
 const VALID_SOURCES = new Set(['meta_ads', 'google_ads', 'referral', 'website', 'instagram', 'facebook_organic', 'linkedin', 'email', 'existing_client', 'prospecting', 'networking', 'manual', 'other']);
-const VALID_OUTREACH_STATUSES = new Set(['pending', 'generating', 'ready', 'failed', 'sent', 'archived']);
+const INACTIVE_CLIENT_NAMES = new Set([
+  'Flagworks', 'Light Dust', 'Mabii Co', 'Efficient Finance', 'Phoenix Hospitality Group',
+  'Mediterranean Blu Spritz', 'The Mastery Lab', 'Little Windmill Clothing Co', 'Lease of Mind',
+  'Bark Hair', 'NSW Fishing League', 'Laud Recovery', 'Familia Fitness', 'Goochs Garage',
+  'KHY Physio', 'Sandhurst Roofing',
+]);
+const PLAN_MONTHLY_VALUES: Record<string, number> = { basic: 199, pro: 399, max: 599 };
+const VALID_HEALTH_CONFIDENCE = new Set(['low', 'medium', 'high']);
+const VALID_ISSUE_SEVERITY = new Set(['none', 'watch', 'concern', 'critical']);
+const VALID_PAYMENT_STATUS = new Set(['unknown', 'current', 'overdue']);
+const VALID_ONBOARDING_STATUS = new Set(['not_started', 'in_progress', 'complete', 'blocked']);
+const VALID_RENEWAL_SIGNAL = new Set(['unknown', 'positive', 'neutral', 'negative']);
 
 function nullableText(value: unknown, max: number) {
   const cleaned = cleanText(value, max);
@@ -35,305 +43,104 @@ function dateOnly(value: unknown) {
   return /^\d{4}-\d{2}-\d{2}$/.test(cleaned) ? cleaned : null;
 }
 
-function safeStorageSegment(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-|-$/g, '').slice(0, 80) || 'instagram-lead';
+function melbourneToday() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Australia/Melbourne',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
 }
 
-function stripMessageDashes(value: string) {
-  return value.replace(/[—–]/g, ' - ').replace(/[ \t]+\n/g, '\n').trim();
+function shiftDate(value: string, days: number) {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
 }
 
-function escapeSvgText(value: string) {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
+function currentWeek(today: string) {
+  const date = new Date(`${today}T00:00:00.000Z`);
+  const mondayOffset = (date.getUTCDay() + 6) % 7;
+  const start = shiftDate(today, -mondayOffset);
+  return { start, end: shiftDate(start, 6) };
 }
 
-function splitHeadlineLines(headline: string) {
-  const words = headline.trim().toUpperCase().split(/\s+/).filter(Boolean).slice(0, 7);
-  if (words.length <= 3 && words.join(' ').length <= 18) return [words.join(' ')];
+function daysSince(value: string | null | undefined, today: string) {
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  const todayTime = new Date(`${today}T00:00:00.000Z`).getTime();
+  return Number.isNaN(time) ? null : Math.floor((todayTime - time) / 86_400_000);
+}
 
-  const targetLines = words.length <= 5 ? 2 : 3;
-  let best = [words.join(' ')];
-  let bestScore = Number.POSITIVE_INFINITY;
-  const score = (lines: string[]) => {
-    const lengths = lines.map((line) => line.length);
-    return Math.max(...lengths) - Math.min(...lengths) + Math.max(...lengths) * 0.08;
+function churnAssessment(input: {
+  health: Record<string, any>;
+  delivery: { total: number; outstanding: number };
+  lastAnalyticsSent?: string | null;
+  today: string;
+  startDate?: string | null;
+}) {
+  const { health, delivery, lastAnalyticsSent, today, startDate } = input;
+  const reasons: string[] = [];
+  let score = Math.round((100 - Number(health.relationship_health || 70)) * 0.35);
+  const add = (points: number, reason: string) => {
+    score += points;
+    reasons.push(reason);
   };
 
-  if (targetLines === 2) {
-    for (let firstBreak = 1; firstBreak < words.length; firstBreak += 1) {
-      const candidate = [words.slice(0, firstBreak).join(' '), words.slice(firstBreak).join(' ')];
-      if (score(candidate) < bestScore) {
-        best = candidate;
-        bestScore = score(candidate);
-      }
-    }
-  } else {
-    for (let firstBreak = 1; firstBreak < words.length - 1; firstBreak += 1) {
-      for (let secondBreak = firstBreak + 1; secondBreak < words.length; secondBreak += 1) {
-        const candidate = [
-          words.slice(0, firstBreak).join(' '),
-          words.slice(firstBreak, secondBreak).join(' '),
-          words.slice(secondBreak).join(' '),
-        ];
-        if (score(candidate) < bestScore) {
-          best = candidate;
-          bestScore = score(candidate);
-        }
-      }
-    }
+  const issuePoints: Record<string, number> = { watch: 10, concern: 20, critical: 35 };
+  if (issuePoints[health.issue_severity]) add(issuePoints[health.issue_severity], health.open_issue || `${health.issue_severity} client issue recorded`);
+  if (health.payment_status === 'overdue') add(25, 'Payment is overdue');
+  if (health.onboarding_status === 'blocked') add(20, 'Onboarding is blocked');
+  else if (health.onboarding_status !== 'complete' && (daysSince(startDate, today) || 0) >= 7) add(10, 'Onboarding is still incomplete');
+  if (health.renewal_signal === 'negative') add(20, 'Negative renewal signal recorded');
+  if (health.scope_pressure) add(10, 'Scope or expectation pressure is present');
+  if (health.performance_concern) add(10, 'Performance concern is present');
+
+  const contactAge = daysSince(health.last_meaningful_contact, today);
+  if (contactAge === null) add(5, 'No meaningful contact has been recorded');
+  else if (contactAge > 30) add(20, `No meaningful contact for ${contactAge} days`);
+  else if (contactAge > 14) add(10, `Last meaningful contact was ${contactAge} days ago`);
+
+  if (health.next_action_due && health.next_action_due < today) add(10, 'Next action is overdue');
+  if (delivery.outstanding > 0) add(15, `${delivery.outstanding} current-week delivery item${delivery.outstanding === 1 ? ' is' : 's are'} overdue`);
+  else if (delivery.total === 0) add(5, 'No content is scheduled this week');
+
+  const clientAge = daysSince(startDate, today);
+  const reportAge = daysSince(lastAnalyticsSent, today);
+  if ((clientAge || 0) > 35 && (reportAge === null || reportAge > 35)) add(5, 'No recent analytics update has been sent');
+  const positiveAge = daysSince(health.positive_feedback_at, today);
+  if (positiveAge !== null && positiveAge <= 30) {
+    score -= 10;
+    reasons.push('Recent positive feedback lowers the current risk');
   }
-  return best;
+
+  score = Math.min(100, Math.max(0, score));
+  const riskLevel = score >= 75 ? 'critical' : score >= 50 ? 'high' : score >= 25 ? 'watch' : 'low';
+  return { churn_risk: score, risk_level: riskLevel, risk_reasons: reasons };
 }
 
-function buildHeadlineOverlay(headline: string) {
-  const lines = splitHeadlineLines(headline);
-  const longestLine = Math.max(...lines.map((line) => line.length), 1);
-  const fontSize = Math.max(86, Math.min(156, Math.floor(850 / (longestLine * 0.59))));
-  const lineHeight = Math.round(fontSize * 0.96);
-  const blockHeight = lineHeight * lines.length;
-  const startY = Math.round(925 - blockHeight / 2 + fontSize * 0.78);
-  const text = lines.map((line, index) => (
-    `<text x="92" y="${startY + index * lineHeight}" fill="${index === lines.length - 1 ? '#D7FF3F' : '#FFFFFF'}" ` +
-    `font-family="Arial Narrow, Arial, sans-serif" font-size="${fontSize}" font-weight="900" letter-spacing="-2" ` +
-    `stroke="#111111" stroke-width="10" paint-order="stroke fill" stroke-linejoin="round">${escapeSvgText(line)}</text>`
-  )).join('');
-
-  return Buffer.from(`<svg width="1080" height="1920" viewBox="0 0 1080 1920" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <linearGradient id="shade" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0" stop-color="#050505" stop-opacity="0.82"/>
-        <stop offset="0.64" stop-color="#050505" stop-opacity="0.24"/>
-        <stop offset="1" stop-color="#050505" stop-opacity="0"/>
-      </linearGradient>
-      <linearGradient id="bottom" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0.42" stop-color="#050505" stop-opacity="0"/>
-        <stop offset="1" stop-color="#050505" stop-opacity="0.58"/>
-      </linearGradient>
-    </defs>
-    <rect width="1080" height="1920" fill="url(#shade)"/>
-    <rect width="1080" height="1920" fill="url(#bottom)"/>
-    <rect x="92" y="${Math.max(440, startY - fontSize - 42)}" width="96" height="14" rx="7" fill="#D7FF3F"/>
-    ${text}
-  </svg>`);
-}
-
-async function generateOutreachCopy(input: Record<string, unknown>) {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
-  if (!apiKey) throw new Error('GEMINI_NOT_CONFIGURED');
-
-  const contactName = cleanText(input.contact_name, 120);
-  const businessName = cleanText(input.business_name, 200);
-  const industry = cleanText(input.industry, 160);
-  const location = cleanText(input.location, 160);
-  const profileNotes = cleanText(input.profile_notes, 3000);
-  const offerFocus = cleanText(input.offer_focus, 300) || 'social media content and strategy';
-  const graphicDirection = cleanText(input.graphic_direction, 1000);
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-3.6-flash',
-    systemInstruction: `You write thoughtful Instagram outreach for Heath at Seam Media, an Australian social media agency.
-
-Rules:
-- Use Australian spelling and a friendly-professional, natural tone.
-- Never use em dashes or en dashes.
-- The message is a first DM to a business that has recently followed Seam Media.
-- Mention one specific, credible detail from the supplied profile notes.
-- Explain that Heath made a quick example Reel cover for their business.
-- Do not pretend to have researched anything beyond the supplied details.
-- Keep the message between 65 and 105 words in 2 or 3 short paragraphs.
-- Use the contact's first name in a casual greeting when provided.
-- End with one low-pressure question.
-- Do not use hashtags, Markdown, a formal sign-off or more than one emoji.`,
-    generationConfig: {
-      responseMimeType: 'application/json',
-      responseSchema: {
-        type: SchemaType.OBJECT,
-        properties: {
-          message: { type: SchemaType.STRING },
-          graphic_headline: { type: SchemaType.STRING },
-          graphic_prompt: { type: SchemaType.STRING },
-        },
-        required: ['message', 'graphic_headline', 'graphic_prompt'],
-      },
-    },
-  });
-
-  const result = await model.generateContent(`Create an outreach message and vertical Instagram Reel cover concept using only these details:
-
-Contact: ${contactName || 'Not provided'}
-Business: ${businessName}
-Industry: ${industry || 'Not provided'}
-Location: ${location || 'Not provided'}
-Profile notes: ${profileNotes}
-Seam Media offer: ${offerFocus}
-Requested graphic direction: ${graphicDirection || 'Choose a polished concept that suits the business'}
-
-For graphic_headline, write one bold hook of 3 to 7 words. It must be grounded in the supplied notes, mobile-readable and suitable for oversized uppercase lettering. Do not include the business name unless it is essential to the hook.
-
-For graphic_prompt, describe only the topic-relevant subject, scene and visual story for a premium vertical Reel cover. Do not request extra visible copy. Do not invent a person, logo, pricing, claim, contact detail or offer. The cover must communicate its subject within one second and look like a real high-performing social thumbnail, not an advertisement for Seam Media.`);
-  const parsed = JSON.parse(result.response.text()) as {
-    message: string;
-    graphic_headline: string;
-    graphic_prompt: string;
-  };
-
+function clientHealthPayload(input: Record<string, unknown>) {
+  const enumValue = (value: unknown, valid: Set<string>, fallback: string) => valid.has(String(value)) ? String(value) : fallback;
   return {
-    message: stripMessageDashes(parsed.message),
-    graphic_headline: stripMessageDashes(parsed.graphic_headline).slice(0, 300),
-    graphic_prompt: stripMessageDashes(parsed.graphic_prompt).slice(0, 4000),
+    monthly_value: nullableNumber(input.monthly_value),
+    start_date: dateOnly(input.start_date),
+    relationship_health: Math.min(100, Math.max(0, Math.round(Number(input.relationship_health) || 0))),
+    health_note: nullableText(input.health_note, 2000),
+    confidence: enumValue(input.confidence, VALID_HEALTH_CONFIDENCE, 'low'),
+    last_meaningful_contact: nullableDate(input.last_meaningful_contact),
+    next_action: nullableText(input.next_action, 1000),
+    next_action_due: dateOnly(input.next_action_due),
+    open_issue: nullableText(input.open_issue, 3000),
+    issue_severity: enumValue(input.issue_severity, VALID_ISSUE_SEVERITY, 'none'),
+    payment_status: enumValue(input.payment_status, VALID_PAYMENT_STATUS, 'unknown'),
+    onboarding_status: enumValue(input.onboarding_status, VALID_ONBOARDING_STATUS, 'not_started'),
+    renewal_signal: enumValue(input.renewal_signal, VALID_RENEWAL_SIGNAL, 'unknown'),
+    scope_pressure: Boolean(input.scope_pressure),
+    performance_concern: Boolean(input.performance_concern),
+    positive_feedback_at: nullableDate(input.positive_feedback_at),
+    internal_notes: nullableText(input.internal_notes, 10_000),
+    updated_at: new Date().toISOString(),
   };
-}
-
-async function generateAndStoreOutreachGraphic(
-  db: ReturnType<typeof portalDb>,
-  username: string,
-  input: {
-    businessName: string;
-    headline: string;
-    industry: string;
-    location: string;
-    profileNotes: string;
-    visualDirection: string;
-  },
-) {
-  const apiKey = process.env.OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY;
-  if (!apiKey) throw new Error('OPENAI_NOT_CONFIGURED');
-
-  const headline = input.headline.toUpperCase();
-  const productionPrompt = `Use case: ads-marketing
-Asset type: text-free background for a vertical Instagram Reel cover, 9:16
-Primary request: Create one bold, credible background image for ${input.businessName}.
-Input images: No identity or style reference supplied. Do not invent a recognisable business owner or copy another creator's branding.
-Subject: ${input.industry || 'The business service described by the visual direction'} shown through a strong topic-relevant scene or object.
-Scene/backdrop: ${input.visualDirection}
-Profile context: ${input.profileNotes || 'No additional profile details supplied.'}
-Composition/framing: One dominant subject or visual story, strong depth, generous darker negative space across the centre-left for a headline that will be added later, and all important content kept inside the central crop-safe area.
-Style: bold professional social-media thumbnail, energetic and credible, not a quiet static brand tile.
-Colour palette: high contrast and suited to the business category.
-Localisation: Match the supplied location and profile context${input.location ? `, especially ${input.location}` : ''}. Use Australian visual defaults only when the context is Australian or the location is unspecified. If the context clearly indicates another country, follow that market.
-Constraints: final composition must survive Reel UI and profile-grid crops; no unsupported claims.
-Avoid: ANY visible text, letters, numbers, signage, labels, business-name lockup, invented logo, watermark, Instagram interface, captions, clutter, foreign-market cues that conflict with the supplied location, distorted people or hands.`;
-
-  const generateCover = async (prompt: string) => {
-    const response = await fetch('https://api.openai.com/v1/images/generations', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-image-2',
-        prompt,
-        size: '1024x1536',
-        quality: 'medium',
-        n: 1,
-      }),
-    });
-    if (!response.ok) {
-      const details = await response.text();
-      console.error('Outreach Reel cover generation failed:', response.status, details.slice(0, 1000));
-      throw new Error('GRAPHIC_GENERATION_FAILED');
-    }
-
-    const result = await response.json() as { data?: Array<{ b64_json?: string }> };
-    const base64 = result.data?.[0]?.b64_json;
-    if (!base64) throw new Error('GRAPHIC_GENERATION_FAILED');
-
-    const background = await sharp(Buffer.from(base64, 'base64'))
-      .resize(1080, 1920, { fit: 'cover', position: 'centre' })
-      .png()
-      .toBuffer();
-    return sharp(background)
-      .composite([{ input: buildHeadlineOverlay(headline), top: 0, left: 0 }])
-      .png()
-      .toBuffer();
-  };
-
-  const inspectCover = async (image: Buffer) => {
-    const geminiApiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
-    if (!geminiApiKey) throw new Error('GEMINI_NOT_CONFIGURED');
-    const genAI = new GoogleGenerativeAI(geminiApiKey);
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-3.6-flash',
-      generationConfig: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: SchemaType.OBJECT,
-          properties: {
-            passed: { type: SchemaType.BOOLEAN },
-            text_accurate: { type: SchemaType.BOOLEAN },
-            issues: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-          },
-          required: ['passed', 'text_accurate', 'issues'],
-        },
-      },
-    });
-    const result = await model.generateContent([
-      { inlineData: { data: image.toString('base64'), mimeType: 'image/png' } },
-      { text: `Quality-check this vertical Instagram Reel cover.
-
-Expected headline, verbatim: "${headline}"
-
-Pass only when:
-- the expected headline is exact, complete and readable at phone thumbnail size
-- the cover communicates the business topic within one second
-- all important content is inside the central crop-safe area
-- text does not cover a person's eyes or mouth
-- there is no extra text, duplicate wording, invented logo, watermark or platform interface
-- the layout is bold, credible and high contrast rather than cluttered or gimmicky
-- visual and spelling cues match the supplied location and profile context
-
-Return concise, actionable issues for a targeted regeneration.` },
-    ]);
-    return JSON.parse(result.response.text()) as {
-      passed: boolean;
-      text_accurate: boolean;
-      issues: string[];
-    };
-  };
-
-  let image = await generateCover(productionPrompt);
-  let inspection = await inspectCover(image);
-  if (!inspection.passed) {
-    const correction = inspection.issues.length
-      ? inspection.issues.join('; ')
-      : 'Improve headline accuracy, mobile legibility and central crop safety.';
-    image = await generateCover(`${productionPrompt}
-
-TARGETED CORRECTION: ${correction}
-Change only the background image needed to fix these issues. Do not add any visible text.`);
-    inspection = await inspectCover(image);
-  }
-  if (!inspection.passed || !inspection.text_accurate) {
-    console.warn('Outreach Reel cover quality warning after deterministic headline overlay:', inspection.issues);
-  }
-
-  const storagePath = `outreach/instagram/${safeStorageSegment(username)}/${Date.now()}-${randomUUID()}.png`;
-  const { error } = await db.storage.from('post-images').upload(storagePath, image, {
-    cacheControl: '31536000',
-    contentType: 'image/png',
-    upsert: false,
-  });
-  if (error) {
-    console.error('Outreach graphic upload failed:', error);
-    throw new Error('GRAPHIC_UPLOAD_FAILED');
-  }
-  return db.storage.from('post-images').getPublicUrl(storagePath).data.publicUrl;
-}
-
-function outreachGenerationError(error: unknown) {
-  if (!(error instanceof Error)) return 'The outreach draft could not be generated. Please try again.';
-  if (error.message === 'GEMINI_NOT_CONFIGURED') return 'Gemini is not configured for outreach message generation.';
-  if (error.message === 'OPENAI_NOT_CONFIGURED') return 'OpenAI is not configured for outreach graphic generation.';
-  if (error.message === 'GRAPHIC_GENERATION_FAILED') return 'The custom Reel cover could not be generated. Please retry this draft.';
-  if (error.message === 'GRAPHIC_UPLOAD_FAILED') return 'The Reel cover was created but could not be saved. Please retry this draft.';
-  return 'The outreach draft could not be generated. Please retry it.';
 }
 
 async function authenticateAgency(req: VercelRequest) {
@@ -387,22 +194,139 @@ export async function agencyLeadsHandler(req: VercelRequest, res: VercelResponse
     const db = await authenticateAgency(req);
 
     if (req.method === 'GET') {
+      const today = melbourneToday();
+      const week = currentWeek(today);
       const [
         { data: leads, error: leadsError },
         { data: periods, error: periodsError },
-        { data: outreachDrafts, error: outreachError },
+        { data: clients, error: clientsError },
+        { data: clientHealth, error: clientHealthError },
+        { data: posts, error: postsError },
+        { data: reportRuns, error: reportRunsError },
       ] = await Promise.all([
         db.from('agency_leads').select('*, client:clients(id, name, provisioning_status, subscription_status, offboarded_at, offboarding_reason)').order('created_at', { ascending: false }).limit(3000),
         db.from('agency_marketing_periods').select('*').order('period_end', { ascending: false }).limit(120),
-        db.from('agency_outreach_drafts').select('*').order('created_at', { ascending: false }).limit(300),
+        db.from('clients').select('id,name,brand_name,contact_name,plan_name,provisioning_status,subscription_status,created_at,onboarding_completed_at').neq('name', 'Seam Media').order('name'),
+        db.from('agency_client_health').select('*'),
+        db.from('posts').select('client_id,date,status').gte('date', week.start).lte('date', week.end),
+        db.from('client_analytics_report_runs').select('client_id,sent_at').eq('status', 'sent').order('sent_at', { ascending: false }).limit(1000),
       ]);
       if (leadsError) throw leadsError;
       if (periodsError) throw periodsError;
-      if (outreachError) throw outreachError;
-      return res.status(200).json({ leads: leads || [], periods: periods || [], outreachDrafts: outreachDrafts || [] });
+      if (clientsError) throw clientsError;
+      if (clientHealthError) throw clientHealthError;
+      if (postsError) throw postsError;
+      if (reportRunsError) throw reportRunsError;
+
+      const healthByClient = new Map((clientHealth || []).map((health) => [health.client_id, health]));
+      const leadByClient = new Map((leads || []).filter((lead) => lead.client_id).map((lead) => [lead.client_id, lead]));
+      const reportsByClient = new Map<string, string>();
+      for (const run of reportRuns || []) if (run.sent_at && !reportsByClient.has(run.client_id)) reportsByClient.set(run.client_id, run.sent_at);
+      const postsByClient = new Map<string, Array<{ date: string; status: string }>>();
+      for (const post of posts || []) {
+        const clientPosts = postsByClient.get(post.client_id) || [];
+        clientPosts.push(post);
+        postsByClient.set(post.client_id, clientPosts);
+      }
+
+      const currentClients = (clients || [])
+        .filter((client) => (
+          client.provisioning_status !== 'cancelled'
+          && !INACTIVE_CLIENT_NAMES.has(client.name)
+          && Boolean(PLAN_MONTHLY_VALUES[String(client.plan_name || '').toLowerCase()])
+        ))
+        .map((client) => {
+          const health = healthByClient.get(client.id) || {};
+          const convertedLead = leadByClient.get(client.id);
+          const planValue = PLAN_MONTHLY_VALUES[String(client.plan_name || '').toLowerCase()];
+          const monthlyValue = health.monthly_value ?? convertedLead?.monthly_value ?? planValue ?? null;
+          const monthlyValueSource = health.monthly_value !== null && health.monthly_value !== undefined
+            ? 'health'
+            : convertedLead?.monthly_value
+              ? 'lead'
+              : planValue
+                ? 'plan'
+                : 'missing';
+          const startDate = health.start_date || convertedLead?.sign_on_date || client.created_at?.slice(0, 10) || null;
+          const clientAge = daysSince(startDate, today) || 0;
+          const onboardingStatus = health.onboarding_status || (
+            client.provisioning_status === 'pending_intake'
+              ? 'in_progress'
+              : client.onboarding_completed_at || clientAge > 30
+                ? 'complete'
+                : 'in_progress'
+          );
+          const clientPosts = postsByClient.get(client.id) || [];
+          const delivery = {
+            total: clientPosts.length,
+            posted: clientPosts.filter((post) => post.status === 'Posted').length,
+            outstanding: clientPosts.filter((post) => post.date < today && post.status !== 'Posted').length,
+            awaiting: clientPosts.filter((post) => ['For Approval', 'Revision'].includes(post.status)).length,
+            in_progress: clientPosts.filter((post) => ['Client Idea', 'Draft', 'Generated', 'Approved'].includes(post.status)).length,
+          };
+          const normalisedHealth = {
+            relationship_health: health.relationship_health ?? 70,
+            health_note: health.health_note ?? null,
+            confidence: health.confidence || 'low',
+            last_meaningful_contact: health.last_meaningful_contact ?? null,
+            next_action: health.next_action ?? null,
+            next_action_due: health.next_action_due ?? null,
+            open_issue: health.open_issue ?? null,
+            issue_severity: health.issue_severity || 'none',
+            payment_status: health.payment_status || 'unknown',
+            onboarding_status: onboardingStatus,
+            renewal_signal: health.renewal_signal || 'unknown',
+            scope_pressure: Boolean(health.scope_pressure),
+            performance_concern: Boolean(health.performance_concern),
+            positive_feedback_at: health.positive_feedback_at ?? null,
+            internal_notes: health.internal_notes ?? null,
+          };
+          const lastAnalyticsSent = reportsByClient.get(client.id) || null;
+          return {
+            id: client.id,
+            name: client.brand_name || client.name,
+            contact_name: client.contact_name,
+            plan_name: client.plan_name,
+            provisioning_status: client.provisioning_status,
+            subscription_status: client.subscription_status,
+            monthly_value: monthlyValue,
+            monthly_value_source: monthlyValueSource,
+            start_date: startDate,
+            ...normalisedHealth,
+            delivery,
+            analytics: { last_sent_at: lastAnalyticsSent },
+            ...churnAssessment({ health: normalisedHealth, delivery, lastAnalyticsSent, today, startDate }),
+            updated_at: health.updated_at || null,
+          };
+        });
+
+      return res.status(200).json({ leads: leads || [], periods: periods || [], currentClients });
     }
 
     const action = cleanText(req.body?.action, 50);
+
+    if (action === 'saveClientHealth') {
+      const input = (req.body?.client || {}) as Record<string, unknown>;
+      const clientId = cleanText(input.id, 80);
+      if (!clientId) return res.status(400).json({ error: 'A current client is required.' });
+      const { data: client, error: clientError } = await db
+        .from('clients')
+        .select('id,name,provisioning_status')
+        .eq('id', clientId)
+        .maybeSingle();
+      if (clientError) throw clientError;
+      if (!client || client.provisioning_status === 'cancelled' || INACTIVE_CLIENT_NAMES.has(client.name)) {
+        return res.status(404).json({ error: 'That current client could not be found.' });
+      }
+      const payload = { client_id: clientId, ...clientHealthPayload(input) };
+      const { data: clientHealth, error } = await db
+        .from('agency_client_health')
+        .upsert(payload, { onConflict: 'client_id' })
+        .select('*')
+        .single();
+      if (error) throw error;
+      return res.status(200).json({ clientHealth });
+    }
 
     if (action === 'createLead') {
       const input = (req.body?.lead || {}) as Record<string, unknown>;
@@ -466,147 +390,6 @@ export async function agencyLeadsHandler(req: VercelRequest, res: VercelResponse
       if (existing.client_id && ['active', 'paused', 'cancelled'].includes(requestedClientStatus)) activities.push({ lead_id: id, activity_type: 'note', description: `Client lifecycle status set to ${requestedClientStatus}.`, metadata: { client_status: requestedClientStatus } });
       if (activities.length) await db.from('agency_lead_activities').insert(activities);
       return res.status(200).json({ lead });
-    }
-
-    if (action === 'queueOutreachDraft' || action === 'generateOutreachDraft') {
-      const input = (req.body?.draft || {}) as Record<string, unknown>;
-      const instagramUsername = cleanText(input.instagram_username, 100).replace(/^@+/, '').replace(/[^a-zA-Z0-9._]/g, '');
-      const businessName = cleanText(input.business_name, 200);
-      const profileNotes = cleanText(input.profile_notes, 3000);
-      if (!instagramUsername || !businessName || !profileNotes) {
-        return res.status(400).json({ error: 'Instagram username, business name and profile notes are required.' });
-      }
-
-      const payload = {
-        instagram_username: instagramUsername,
-        contact_name: nullableText(input.contact_name, 120),
-        business_name: businessName,
-        industry: nullableText(input.industry, 160),
-        location: nullableText(input.location, 160),
-        profile_notes: profileNotes,
-        offer_focus: nullableText(input.offer_focus, 300),
-        graphic_direction: nullableText(input.graphic_direction, 1000),
-        message: '',
-        status: 'pending',
-        generation_error: null,
-      };
-      const { data: draft, error } = await db.from('agency_outreach_drafts').insert(payload).select('*').single();
-      if (error) throw error;
-      return res.status(200).json({ draft });
-    }
-
-    if (action === 'processOutreachDraft' || action === 'regenerateOutreachGraphic') {
-      const id = cleanText(req.body?.id, 80);
-      if (!id) return res.status(400).json({ error: 'An outreach draft is required.' });
-      const { data: existing, error: existingError } = await db.from('agency_outreach_drafts').select('*').eq('id', id).maybeSingle();
-      if (existingError) throw existingError;
-      if (!existing) return res.status(404).json({ error: 'That outreach draft could not be found.' });
-
-      const force = Boolean(req.body?.force) || action === 'regenerateOutreachGraphic';
-      const claimableStatuses = force ? ['pending', 'failed', 'ready'] : ['pending', 'failed'];
-      const { data: claimed, error: claimError } = await db.from('agency_outreach_drafts').update({
-        status: 'generating',
-        generation_error: null,
-        generation_attempts: Number(existing.generation_attempts || 0) + 1,
-        updated_at: new Date().toISOString(),
-      }).eq('id', id).in('status', claimableStatuses).select('*').maybeSingle();
-      if (claimError) throw claimError;
-      if (!claimed) return res.status(202).json({ draft: existing, processing: existing.status === 'generating' });
-
-      try {
-        const generated = await generateOutreachCopy(claimed as Record<string, unknown>);
-        const graphicUrl = await generateAndStoreOutreachGraphic(db, claimed.instagram_username, {
-          businessName: claimed.business_name,
-          headline: generated.graphic_headline,
-          industry: claimed.industry || '',
-          location: claimed.location || '',
-          profileNotes: claimed.profile_notes || '',
-          visualDirection: generated.graphic_prompt,
-        });
-        const { data: draft, error } = await db.from('agency_outreach_drafts').update({
-          graphic_headline: generated.graphic_headline,
-          graphic_prompt: generated.graphic_prompt,
-          graphic_url: graphicUrl,
-          message: generated.message,
-          status: 'ready',
-          generation_error: null,
-          updated_at: new Date().toISOString(),
-        }).eq('id', id).select('*').single();
-        if (error) throw error;
-        return res.status(200).json({ draft });
-      } catch (generationError) {
-        const message = outreachGenerationError(generationError);
-        console.error('Outreach draft generation failed:', generationError);
-        const { data: failedDraft, error: failedUpdateError } = await db.from('agency_outreach_drafts').update({
-          status: 'failed',
-          generation_error: message,
-          updated_at: new Date().toISOString(),
-        }).eq('id', id).eq('status', 'generating').select('*').maybeSingle();
-        if (failedUpdateError) console.error('Could not mark outreach draft as failed:', failedUpdateError);
-        return res.status(502).json({ error: message, draft: failedDraft });
-      }
-    }
-
-    if (action === 'updateOutreachDraft') {
-      const input = (req.body?.draft || {}) as Record<string, unknown>;
-      const id = cleanText(input.id, 80);
-      if (!id) return res.status(400).json({ error: 'An outreach draft is required.' });
-      const payload: Record<string, unknown> = { updated_at: new Date().toISOString() };
-      if (input.message !== undefined) payload.message = stripMessageDashes(cleanText(input.message, 5000));
-      if (input.status !== undefined && VALID_OUTREACH_STATUSES.has(String(input.status))) payload.status = input.status;
-      const { data: draft, error } = await db.from('agency_outreach_drafts').update(payload).eq('id', id).select('*').single();
-      if (error) throw error;
-      return res.status(200).json({ draft });
-    }
-
-    if (action === 'markOutreachSent') {
-      const id = cleanText(req.body?.id, 80);
-      if (!id) return res.status(400).json({ error: 'An outreach draft is required.' });
-      const { data: draft, error: draftError } = await db.from('agency_outreach_drafts').select('*').eq('id', id).maybeSingle();
-      if (draftError) throw draftError;
-      if (!draft) return res.status(404).json({ error: 'That outreach draft could not be found.' });
-
-      let agencyLeadId = draft.agency_lead_id;
-      const contactedAt = draft.sent_at || new Date().toISOString();
-      const messageSent = req.body?.message !== undefined
-        ? stripMessageDashes(cleanText(req.body.message, 5000))
-        : draft.message;
-      if (!agencyLeadId) {
-        const leadPayload = {
-          name: draft.contact_name || `@${draft.instagram_username}`,
-          company: draft.business_name,
-          stage: 'contacted_1',
-          source: 'instagram',
-          source_platform: 'Instagram',
-          owner: 'Heath',
-          conversion_probability: 20,
-          notes: stripMessageDashes([
-            `Instagram outreach sent to @${draft.instagram_username}.`,
-            draft.profile_notes ? `Profile notes: ${draft.profile_notes}` : '',
-            `Message sent:\n${messageSent}`,
-          ].filter(Boolean).join('\n\n')),
-          next_action: 'Watch for a reply on Instagram',
-          last_contacted: contactedAt,
-          updated_at: new Date().toISOString(),
-        };
-        const { data: lead, error: leadError } = await db.from('agency_leads').insert(leadPayload).select('*').single();
-        if (leadError) throw leadError;
-        agencyLeadId = lead.id;
-        await db.from('agency_lead_activities').insert([
-          { lead_id: lead.id, activity_type: 'created', description: 'Lead added from Instagram Outreach Studio.' },
-          { lead_id: lead.id, activity_type: 'contact', description: `Instagram outreach sent to @${draft.instagram_username}.`, metadata: { outreach_draft_id: id } },
-        ]);
-      }
-
-      const { data: updated, error } = await db.from('agency_outreach_drafts').update({
-        agency_lead_id: agencyLeadId,
-        message: messageSent,
-        status: 'sent',
-        sent_at: contactedAt,
-        updated_at: new Date().toISOString(),
-      }).eq('id', id).select('*').single();
-      if (error) throw error;
-      return res.status(200).json({ draft: updated });
     }
 
     if (action === 'saveMarketingPeriod') {
@@ -674,10 +457,6 @@ export async function agencyLeadsHandler(req: VercelRequest, res: VercelResponse
     return res.status(400).json({ error: 'Unknown lead management action.' });
   } catch (error) {
     if (error instanceof Error && error.message === 'UNAUTHORISED') return res.status(401).json({ error: 'Agency access is required.' });
-    if (error instanceof Error && error.message === 'GEMINI_NOT_CONFIGURED') return res.status(503).json({ error: 'Gemini is not configured for outreach message generation.' });
-    if (error instanceof Error && error.message === 'OPENAI_NOT_CONFIGURED') return res.status(503).json({ error: 'OpenAI is not configured for outreach graphic generation.' });
-    if (error instanceof Error && error.message === 'GRAPHIC_GENERATION_FAILED') return res.status(502).json({ error: 'The custom graphic could not be generated. Please try again.' });
-    if (error instanceof Error && error.message === 'GRAPHIC_UPLOAD_FAILED') return res.status(502).json({ error: 'The custom graphic was created but could not be saved. Please try again.' });
     console.error('Agency lead management failed:', error);
     return res.status(500).json({ error: 'Lead management could not be updated. Please try again.' });
   }

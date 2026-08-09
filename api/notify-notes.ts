@@ -1,8 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { isPortalEmailNotificationsEnabled } from '../server/portal.js';
 
 /**
- * Vercel Cron Job - Check for client notes and send email notification
- * Runs every 20 minutes to batch notifications
+ * Legacy notes notification endpoint.
+ * Email delivery is hard-disabled at the application level.
  */
 
 interface PostWithNotes {
@@ -29,6 +30,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.query.secret !== process.env.CRON_SECRET) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
+  }
+
+  if (!isPortalEmailNotificationsEnabled()) {
+    return res.status(200).json({ message: 'Portal email notifications are disabled' });
   }
 
   try {

@@ -21,7 +21,7 @@ export function ClientComments({ posts, onOpenCalendar, onUpdateComment }: Clien
       {sortedPosts.length ? (
         <div className="space-y-4">
           {sortedPosts.map((post) => (
-            <article key={post.id} className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm sm:p-6">
+            <article key={post.id} className="ui-surface rounded-2xl border border-stone-200 bg-white p-5 shadow-sm sm:p-6">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.12em] text-stone-400">{new Date(`${post.date}T00:00:00`).toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
@@ -46,7 +46,7 @@ export function ClientComments({ posts, onOpenCalendar, onUpdateComment }: Clien
           ))}
         </div>
       ) : (
-        <section className="rounded-2xl border border-stone-200 bg-white px-6 py-14 text-center shadow-sm">
+        <section className="ui-surface rounded-2xl border border-stone-200 bg-white px-6 py-14 text-center shadow-sm">
           <MessageSquareText className="mx-auto h-8 w-8 text-stone-300" />
           <h3 className="mt-4 text-lg font-semibold text-brand-dark">No content to comment on yet</h3>
           <p className="mt-2 text-sm text-stone-500">Comments will appear here when content is added to your calendar.</p>

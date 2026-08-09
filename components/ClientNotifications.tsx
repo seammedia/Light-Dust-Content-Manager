@@ -30,11 +30,11 @@ export function ClientNotifications({ clientId, pin, onNavigate }: ClientNotific
         </button>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
+      <div className="ui-surface overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
         {loading && !items.length ? (
           <div className="flex min-h-64 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-brand-green" /></div>
         ) : items.length ? (
-          <div className="divide-y divide-stone-100">
+          <div className="ui-stagger divide-y divide-stone-100">
             {items.map((item) => (
               <button
                 key={item.id}

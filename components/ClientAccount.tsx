@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Building2, Check, Loader2, Palette, Upload } from 'lucide-react';
+import { Building2, Check, Download, Expand, ExternalLink, Loader2, Palette, Upload, X } from 'lucide-react';
 import { Client } from '../types';
 import { supabase } from '../services/supabaseClient';
+import { uploadBrandLogo } from '../services/storageService';
 
 interface ClientAccountProps {
   client: Client;
@@ -49,9 +50,20 @@ export function ClientAccount({ client, onSaved }: ClientAccountProps) {
   const [colourInput, setColourInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [downloadingLogo, setDownloadingLogo] = useState(false);
+  const [logoPreviewOpen, setLogoPreviewOpen] = useState(false);
   const [message, setMessage] = useState('');
 
   useEffect(() => setForm(formFromClient(client)), [client]);
+
+  useEffect(() => {
+    if (!logoPreviewOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setLogoPreviewOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [logoPreviewOpen]);
 
   const updateField = <K extends keyof AccountFormState>(field: K, value: AccountFormState[K]) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -67,24 +79,41 @@ export function ClientAccount({ client, onSaved }: ClientAccountProps) {
 
   const uploadLogo = async (file?: File) => {
     if (!file) return;
-    if (!file.type.startsWith('image/') || file.size > 5 * 1024 * 1024) {
-      setMessage('Please choose an image smaller than 5 MB.');
-      return;
-    }
     setUploadingLogo(true);
     setMessage('');
     try {
-      const extension = file.name.split('.').pop()?.toLowerCase() || 'png';
-      const path = `${client.id}/brand-logo-${Date.now()}.${extension}`;
-      const { error } = await supabase.storage.from('post-images').upload(path, file, { upsert: true });
-      if (error) throw error;
-      const { data } = supabase.storage.from('post-images').getPublicUrl(path);
-      updateField('logoUrl', data.publicUrl);
+      const logoUrl = await uploadBrandLogo(file, client.id);
+      updateField('logoUrl', logoUrl);
     } catch (error) {
       console.error('Logo upload failed:', error);
-      setMessage('The logo could not be uploaded. Please try again.');
+      setMessage(error instanceof Error ? error.message : 'The logo could not be uploaded. Please try again.');
     } finally {
       setUploadingLogo(false);
+    }
+  };
+
+  const downloadLogo = async () => {
+    if (!form.logoUrl) return;
+    setDownloadingLogo(true);
+    setMessage('');
+    try {
+      const response = await fetch(form.logoUrl);
+      if (!response.ok) throw new Error('Logo download failed.');
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const pathname = new URL(form.logoUrl).pathname;
+      link.href = objectUrl;
+      link.download = decodeURIComponent(pathname.split('/').pop() || `${form.name || 'brand'}-logo`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      console.error('Logo download failed:', error);
+      setMessage('The download could not start. Use Open original file and save it from the new tab.');
+    } finally {
+      setDownloadingLogo(false);
     }
   };
 
@@ -128,7 +157,7 @@ export function ClientAccount({ client, onSaved }: ClientAccountProps) {
         <p className="mt-2 max-w-2xl text-stone-500">These details guide content creation and reduce the need for follow-up questions.</p>
       </div>
 
-      <section className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+      <section className="ui-surface rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
         <div className="mb-5 flex items-center gap-3"><Building2 className="h-5 w-5 text-brand-green" /><h3 className="text-lg font-semibold text-brand-dark">Business details</h3></div>
         <div className="grid gap-5 md:grid-cols-2">
           <label className="text-sm font-medium text-stone-700">Business name<input required value={form.name} onChange={(event) => updateField('name', event.target.value)} className={fieldClassName} /></label>
@@ -140,20 +169,26 @@ export function ClientAccount({ client, onSaved }: ClientAccountProps) {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+      <section className="ui-surface rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
         <div className="mb-5 flex items-center gap-3"><Palette className="h-5 w-5 text-brand-green" /><h3 className="text-lg font-semibold text-brand-dark">Brand profile</h3></div>
         <div className="grid gap-5 md:grid-cols-2">
           <div className="md:col-span-2">
             <p className="text-sm font-medium text-stone-700">Logo</p>
             <div className="mt-2 flex flex-wrap items-center gap-4">
-              <div className="flex h-24 w-40 items-center justify-center overflow-hidden rounded-xl border border-dashed border-stone-300 bg-stone-50 p-3">
-                {form.logoUrl ? <img src={form.logoUrl} alt={`${form.name} logo`} className="max-h-full max-w-full object-contain" /> : <span className="text-xs text-stone-400">No logo uploaded</span>}
-              </div>
+              {form.logoUrl ? (
+                <button type="button" onClick={() => setLogoPreviewOpen(true)} className="group relative flex h-24 w-40 items-center justify-center overflow-hidden rounded-xl border border-dashed border-stone-300 bg-stone-50 p-3 transition hover:border-brand-green focus:outline-none focus:ring-2 focus:ring-brand-green/30" aria-label={`View ${form.name} logo at full size`}>
+                  <img src={form.logoUrl} alt={`${form.name} logo`} className="max-h-full max-w-full object-contain" />
+                  <span className="absolute inset-x-2 bottom-2 inline-flex items-center justify-center gap-1 rounded bg-black/75 px-2 py-1 text-[11px] font-semibold text-white opacity-0 transition group-hover:opacity-100 group-focus:opacity-100"><Expand className="h-3 w-3" />View full size</span>
+                </button>
+              ) : (
+                <div className="flex h-24 w-40 items-center justify-center overflow-hidden rounded-xl border border-dashed border-stone-300 bg-stone-50 p-3"><span className="text-xs text-stone-400">No logo uploaded</span></div>
+              )}
               <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700 transition hover:border-brand-green hover:text-brand-green">
                 {uploadingLogo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
                 {uploadingLogo ? 'Uploading…' : 'Upload logo'}
-                <input type="file" accept="image/*" className="hidden" disabled={uploadingLogo} onChange={(event) => uploadLogo(event.target.files?.[0])} />
+                <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden" disabled={uploadingLogo} onChange={(event) => uploadLogo(event.target.files?.[0])} />
               </label>
+              {form.logoUrl && <button type="button" onClick={downloadLogo} disabled={downloadingLogo} className="inline-flex items-center gap-2 rounded-lg border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700 transition hover:border-brand-green hover:text-brand-green disabled:opacity-50">{downloadingLogo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}{downloadingLogo ? 'Downloading…' : 'Download original'}</button>}
             </div>
           </div>
           <label className="text-sm font-medium text-stone-700">Primary font<input value={form.primaryFont} onChange={(event) => updateField('primaryFont', event.target.value)} placeholder="e.g. Lato" className={fieldClassName} /></label>
@@ -171,6 +206,23 @@ export function ClientAccount({ client, onSaved }: ClientAccountProps) {
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}{saving ? 'Saving…' : 'Save changes'}
         </button>
       </div>
+      {logoPreviewOpen && form.logoUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal="true" aria-labelledby="logo-preview-title" onMouseDown={(event) => { if (event.target === event.currentTarget) setLogoPreviewOpen(false); }}>
+          <div className="flex max-h-[95vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-stone-200 px-5 py-4">
+              <div><h3 id="logo-preview-title" className="font-serif text-xl font-bold text-brand-dark">{form.name} logo</h3><p className="mt-0.5 text-xs text-stone-500">Original uploaded file</p></div>
+              <button type="button" onClick={() => setLogoPreviewOpen(false)} className="rounded-lg p-2 text-stone-500 transition hover:bg-stone-100 hover:text-stone-800" aria-label="Close logo preview"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-stone-100 p-6">
+              <img src={form.logoUrl} alt={`${form.name} logo at full size`} className="max-h-[72vh] max-w-full object-contain" />
+            </div>
+            <div className="flex flex-wrap justify-end gap-3 border-t border-stone-200 px-5 py-4">
+              <a href={form.logoUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700 transition hover:border-brand-green hover:text-brand-green"><ExternalLink className="h-4 w-4" />Open original file</a>
+              <button type="button" onClick={downloadLogo} disabled={downloadingLogo} className="inline-flex items-center gap-2 rounded-lg bg-brand-dark px-4 py-2 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-50">{downloadingLogo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}{downloadingLogo ? 'Downloading…' : 'Download original'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </form>
   );
 }

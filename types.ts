@@ -29,6 +29,7 @@ export interface Client {
   offboarded_at?: string;
   offboarding_reason?: string;
   zernio_profile_id?: string;
+  analytics_enabled?: boolean;
   onboarding_answers?: Record<string, unknown>;
   onboarding_completed_at?: string;
   meta_page_id?: string;
@@ -69,6 +70,7 @@ export interface Post {
   date: string;
   notes?: string;
   latePostId?: string; // ID from Late API for rescheduling scheduled posts
+  targetProfileIds?: string[]; // Connected social accounts selected for this post; undefined uses compatible client accounts
 }
 
 export interface BrandContext {

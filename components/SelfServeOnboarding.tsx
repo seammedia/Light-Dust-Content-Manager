@@ -4,7 +4,8 @@ import { Client } from '../types';
 import { getAuthSession } from '../services/authClient';
 import { recoverPaidOnboarding } from '../services/onboardingRecovery';
 import { supabase } from '../services/supabaseClient';
-import { uploadImage } from '../services/storageService';
+import { uploadBrandLogo } from '../services/storageService';
+import { findAccessibleClient } from '../services/clientAccess';
 
 const PLATFORM_OPTIONS = ['Instagram', 'Facebook', 'LinkedIn', 'TikTok'];
 
@@ -31,7 +32,7 @@ export function SelfServeOnboarding() {
       if (!session?.user) { window.location.replace('/signup'); return; }
       if (cancelled) return;
       setUserId(session.user.id);
-      const { data } = await supabase.from('clients').select('*').eq('owner_user_id', session.user.id).maybeSingle();
+      const data = await findAccessibleClient(session.user.id);
       if (cancelled) return;
       if (!data) {
         if (!recoveryAttempted) {
@@ -94,14 +95,7 @@ export function SelfServeOnboarding() {
     try {
       let logoUrl = client.logo_url || null;
       if (logoFile) {
-        if (logoFile.size > 5 * 1024 * 1024) throw new Error('Please choose a logo under 5 MB.');
-        const dataUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(String(reader.result));
-          reader.onerror = () => reject(new Error('Could not read the logo file.'));
-          reader.readAsDataURL(logoFile);
-        });
-        logoUrl = await uploadImage(dataUrl, client.id, `brand-logo-${Date.now()}`);
+        logoUrl = await uploadBrandLogo(logoFile, client.id);
       }
 
       const brandKeywords = form.brandKeywords.split(',').map((value) => value.trim()).filter(Boolean).slice(0, 20);
@@ -180,7 +174,7 @@ export function SelfServeOnboarding() {
           </Section>
 
           <Section title="Brand kit">
-            <Field label="Logo" wide><label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-stone-300 px-4 py-5 text-sm text-stone-500 hover:border-brand-green"><Upload className="h-4 w-4" />{logoFile ? logoFile.name : 'Upload PNG, JPG or WebP'}<input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => setLogoFile(e.target.files?.[0] || null)} /></label></Field>
+            <Field label="Logo" wide><label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-stone-300 px-4 py-5 text-sm text-stone-500 hover:border-brand-green"><Upload className="h-4 w-4" />{logoFile ? logoFile.name : 'Upload PNG, JPG, WebP or SVG'}<input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden" onChange={(e) => setLogoFile(e.target.files?.[0] || null)} /></label></Field>
             <Field label="Brand colours"><input value={form.brandColours} onChange={(e) => update('brandColours', e.target.value)} className="input" placeholder="#1A1A1A, #FFFFFF" /></Field>
             <Field label="Brand keywords"><input value={form.brandKeywords} onChange={(e) => update('brandKeywords', e.target.value)} className="input" placeholder="trusted, local, premium" /></Field>
             <Field label="Primary font"><input value={form.primaryFont} onChange={(e) => update('primaryFont', e.target.value)} className="input" placeholder="e.g. Lato" /></Field>

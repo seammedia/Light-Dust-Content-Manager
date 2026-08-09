@@ -173,7 +173,7 @@ export function ClientAnalyticsEmailSettings({ pin }: { pin: string }) {
       label: 'Global delivery',
       value: data?.globalEnabled ? 'Enabled' : 'Off',
       ready: Boolean(data?.globalEnabled),
-      detail: data?.globalEnabled ? 'The master delivery switch is on.' : 'CLIENT_ANALYTICS_EMAILS_ENABLED is not true.',
+      detail: data?.globalEnabled ? 'Weekly analytics delivery is enabled.' : 'Weekly analytics delivery is switched off.',
     },
     {
       label: 'Resend transport',
@@ -214,12 +214,12 @@ export function ClientAnalyticsEmailSettings({ pin }: { pin: string }) {
             : <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />}
           <div>
             <h3 className={`font-semibold ${data?.globalEnabled ? 'text-red-900' : 'text-amber-900'}`}>
-              {data?.globalEnabled ? 'Global delivery is enabled' : 'Delivery is disabled'}
+              {data?.globalEnabled ? 'Weekly analytics delivery is enabled' : 'Weekly analytics delivery is disabled'}
             </h3>
             <p className={`mt-1 text-sm leading-6 ${data?.globalEnabled ? 'text-red-800' : 'text-amber-800'}`}>
               {data?.globalEnabled
-                ? 'The master switch is on. Saving an opted-in client can make them eligible for the next authorised Monday run.'
-                : 'You can save opt-in choices and generate previews, but the global delivery switch is off. No client emails can be sent from this screen.'}
+                ? 'Only opted-in clients are eligible for the next authorised Monday analytics run. Portal change-notification emails remain disabled.'
+                : 'You can save opt-in choices and generate previews, but weekly analytics delivery is switched off. Portal change-notification emails remain disabled separately.'}
             </p>
           </div>
         </div>
@@ -241,7 +241,11 @@ export function ClientAnalyticsEmailSettings({ pin }: { pin: string }) {
       <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-stone-200 bg-white px-5 py-4 shadow-sm">
         <div>
           <p className="font-semibold text-brand-dark">{optedInCount} client{optedInCount === 1 ? '' : 's'} selected</p>
-          <p className="mt-1 text-sm text-stone-500">Selection alone cannot send while global delivery is off.</p>
+          <p className="mt-1 text-sm text-stone-500">
+            {data?.globalEnabled
+              ? 'Selected, connected clients are eligible for the next authorised Monday run.'
+              : 'Selection alone cannot send while global delivery is off.'}
+          </p>
         </div>
         <button type="button" onClick={load} disabled={loading} className="inline-flex items-center gap-2 rounded-lg border border-stone-300 px-3.5 py-2 text-sm font-medium text-stone-600 hover:bg-stone-50 disabled:opacity-50">
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />

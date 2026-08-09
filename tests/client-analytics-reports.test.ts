@@ -6,6 +6,7 @@ import {
   isDueInMelbourne,
   normaliseZernioMetrics,
   reportingPeriods,
+  summariseClientAnalyticsReport,
 } from '../server/clientAnalyticsReports.ts';
 
 test('builds rolling and comparison periods from the previous completed day', () => {
@@ -168,6 +169,35 @@ test('normalises supported Zernio metric aliases without inventing missing value
     views: 340,
   });
   assert.equal(normaliseZernioMetrics({ likes: 3 }).reach, 0);
+});
+
+test('summarises a live 30-day report for the client analytics screen', () => {
+  const report = buildReportFromSnapshots({
+    clientId: 'client-live',
+    clientName: 'Live Client',
+    recipientName: 'Alex',
+    periodEnd: '2026-08-04',
+  }, [{
+    post_id: 'post-live',
+    platform: 'instagram',
+    captured_on: '2026-08-04',
+    published_at: '2026-07-20T08:00:00.000Z',
+    impressions: 200,
+    reach: 120,
+    likes: 15,
+    comments: 2,
+    shares: 3,
+    saves: 4,
+    clicks: 5,
+    views: 180,
+    raw_metrics: { impressions: 200, reach: 120, likes: 15, comments: 2, shares: 3, saves: 4, clicks: 5, views: 180 },
+  }], []);
+  const summary = summariseClientAnalyticsReport(report);
+  assert.equal(summary.sampledPosts, 1);
+  assert.equal(summary.periodStart, '2026-07-06');
+  assert.equal(summary.metrics.find((metric) => metric.key === 'reach')?.value, 120);
+  assert.equal(summary.metrics.find((metric) => metric.key === 'engagements')?.value, 24);
+  assert.equal(summary.platforms[0].platform, 'instagram');
 });
 
 test('the production email contains no em dash characters', () => {

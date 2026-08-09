@@ -50,6 +50,11 @@ Before these PINs will work, you MUST run the SQL migration in Supabase!
 - Contact: Sal (sally@cwsa.com.au)
 - Note: Sal can switch between Washco Express and CWSA using the "Switch Client" button
 
+### NSW Fishing League
+- PIN: `638271`
+- Access: NSW Fishing League content only
+- Note: Isolated from Sal's shared CWSA and Washco Express access; hidden from the client selector while inactive
+
 ### Flagworks
 - PIN: `191816`
 - Access: Flagworks content only

@@ -71,30 +71,73 @@ export interface AgencyMarketingPeriod {
   is_estimate: boolean;
 }
 
-export type OutreachDraftStatus = 'pending' | 'generating' | 'ready' | 'failed' | 'sent' | 'archived';
+export type ClientHealthConfidence = 'low' | 'medium' | 'high';
+export type ClientIssueSeverity = 'none' | 'watch' | 'concern' | 'critical';
+export type ClientPaymentStatus = 'unknown' | 'current' | 'overdue';
+export type ClientOnboardingStatus = 'not_started' | 'in_progress' | 'complete' | 'blocked';
+export type ClientRenewalSignal = 'unknown' | 'positive' | 'neutral' | 'negative';
 
-export interface OutreachDraft {
+export interface AgencyCurrentClient {
   id: string;
-  agency_lead_id?: string | null;
-  instagram_username: string;
+  name: string;
   contact_name?: string | null;
-  business_name: string;
-  industry?: string | null;
-  location?: string | null;
-  profile_notes?: string | null;
-  offer_focus?: string | null;
-  graphic_direction?: string | null;
-  graphic_headline?: string | null;
-  graphic_prompt?: string | null;
-  graphic_url?: string | null;
-  message: string;
-  status: OutreachDraftStatus;
-  generation_error?: string | null;
-  generation_attempts: number;
-  sent_at?: string | null;
-  created_at: string;
-  updated_at: string;
+  plan_name?: string | null;
+  provisioning_status?: 'pending_intake' | 'active' | 'paused' | 'cancelled';
+  subscription_status?: string | null;
+  monthly_value?: number | null;
+  monthly_value_source: 'health' | 'lead' | 'plan' | 'missing';
+  start_date?: string | null;
+  relationship_health: number;
+  health_note?: string | null;
+  confidence: ClientHealthConfidence;
+  last_meaningful_contact?: string | null;
+  next_action?: string | null;
+  next_action_due?: string | null;
+  open_issue?: string | null;
+  issue_severity: ClientIssueSeverity;
+  payment_status: ClientPaymentStatus;
+  onboarding_status: ClientOnboardingStatus;
+  renewal_signal: ClientRenewalSignal;
+  scope_pressure: boolean;
+  performance_concern: boolean;
+  positive_feedback_at?: string | null;
+  internal_notes?: string | null;
+  delivery: {
+    total: number;
+    outstanding: number;
+    posted: number;
+    awaiting: number;
+    in_progress: number;
+  };
+  analytics: {
+    last_sent_at?: string | null;
+  };
+  churn_risk: number;
+  risk_level: 'low' | 'watch' | 'high' | 'critical';
+  risk_reasons: string[];
+  updated_at?: string | null;
 }
+
+export type AgencyClientHealthUpdate = Pick<AgencyCurrentClient,
+  | 'id'
+  | 'monthly_value'
+  | 'start_date'
+  | 'relationship_health'
+  | 'health_note'
+  | 'confidence'
+  | 'last_meaningful_contact'
+  | 'next_action'
+  | 'next_action_due'
+  | 'open_issue'
+  | 'issue_severity'
+  | 'payment_status'
+  | 'onboarding_status'
+  | 'renewal_signal'
+  | 'scope_pressure'
+  | 'performance_concern'
+  | 'positive_feedback_at'
+  | 'internal_notes'
+>;
 
 export const LEAD_STAGES: Array<{ value: AgencyLeadStage; label: string }> = [
   { value: 'new', label: 'New' },

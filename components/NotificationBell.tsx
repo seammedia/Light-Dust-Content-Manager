@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Bell, CheckCheck, Loader2 } from 'lucide-react';
 import { PortalSection } from './ClientPortalSidebar';
 import { usePortalNotifications } from './usePortalNotifications';
+import { runUiTransition } from '../ui-motion';
 
 interface NotificationBellProps {
   clientId: string;
@@ -27,19 +28,19 @@ export function NotificationBell({ clientId, pin, onNavigate, onUnreadChange }: 
 
   return (
     <div ref={root} className="relative">
-      <button type="button" onClick={() => { setOpen((value) => !value); void refresh(true); }} className="relative rounded-lg p-2 text-stone-500 transition-colors hover:bg-stone-100 hover:text-brand-green" aria-label={`${unread} unread notifications`}>
+      <button type="button" onClick={() => { runUiTransition(() => setOpen((value) => !value)); void refresh(true); }} className="relative rounded-xl p-2 text-stone-500 transition-all hover:bg-stone-100 hover:text-brand-green" aria-label={`${unread} unread notifications`}>
         <Bell className="h-5 w-5" />
         {unread > 0 && <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">{unread > 9 ? '9+' : unread}</span>}
       </button>
       {open && (
-        <div className="absolute right-0 top-11 z-50 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-2xl">
+        <div role="dialog" aria-label="Notifications" className="absolute right-0 top-11 z-50 w-[min(24rem,calc(100vw-2rem))] origin-top-right animate-[ui-dialog-in_260ms_cubic-bezier(0.22,1,0.36,1)_both] overflow-hidden rounded-2xl border border-black/[0.08] bg-white/95 shadow-[0_24px_64px_rgba(25,30,23,0.18)] backdrop-blur-xl">
           <div className="flex items-center justify-between border-b border-stone-100 px-4 py-3">
             <div><h2 className="font-semibold text-brand-dark">Notifications</h2><p className="text-xs text-stone-400">Updates on requests and content</p></div>
             <button type="button" onClick={() => void markRead()} disabled={!unread} className="flex items-center gap-1 text-xs font-semibold text-brand-green disabled:opacity-40"><CheckCheck className="h-4 w-4" /> Mark all read</button>
           </div>
           <div className="max-h-[28rem] overflow-y-auto">
             {loading && !items.length ? <div className="flex justify-center p-8"><Loader2 className="h-5 w-5 animate-spin text-brand-green" /></div> : items.length ? items.map((item) => (
-              <button key={item.id} type="button" onClick={() => { void markRead(item.id); if (item.link) onNavigate(item.link); setOpen(false); }} className={`block w-full border-b border-stone-100 px-4 py-3 text-left hover:bg-stone-50 ${item.read_at ? '' : 'bg-emerald-50/50'}`}>
+              <button key={item.id} type="button" onClick={() => { void markRead(item.id); if (item.link) onNavigate(item.link); setOpen(false); }} className={`block w-full border-b border-stone-100 px-4 py-3 text-left transition-colors hover:bg-stone-50 ${item.read_at ? '' : 'bg-emerald-50/50'}`}>
                 <div className="flex gap-3"><span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${item.read_at ? 'bg-stone-200' : 'bg-brand-green'}`} /><div><p className="text-sm font-semibold text-brand-dark">{item.title}</p><p className="mt-0.5 line-clamp-2 text-xs leading-5 text-stone-500">{item.body}</p><p className="mt-1 text-[11px] text-stone-400">{new Date(item.created_at).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</p></div></div>
               </button>
             )) : <p className="p-8 text-center text-sm text-stone-500">You’re all caught up.</p>}
